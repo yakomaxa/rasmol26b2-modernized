@@ -1794,7 +1794,8 @@ void UserMaskAttrib( fields )
 	    temp = mptr->mask;
 	    match = True;
 
-	    if( !MatchChar(temp[13],chain->ident) ) match=False;
+	    /* Legacy COLOR record mask: chain field is one character */
+	    if( !MatchChar(temp[13],chain->ident[0]) ) match=False;
 	    if( !MatchChar(temp[9],ptr->altl) )     match=False;
 
 	    /* Atom Name */

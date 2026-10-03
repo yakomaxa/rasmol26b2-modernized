@@ -143,11 +143,15 @@ typedef struct _Group {
 #define Chain ChainSeg
 #endif
 
+#define MAXCHAINID 8
+
 typedef struct _ChainSeg {
         struct _ChainSeg __far *cnext;    /* Linked list of chains     */
         Group __far *glist;               /* Linked list of groups     */
         Bond __far *blist;                /* Linked list of back bonds */
-        char ident;                       /* Chain identifier          */
+        char ident[MAXCHAINID];           /* Chain identifier (string) */
+        Long identval;                    /* First 4 chars of ident,   */
+                                           /* packed; for fast compare */
         Byte model;                       /* NMR Model / Symmetry      */
 	} Chain;
 
@@ -393,7 +397,7 @@ extern int MaskCount;
 extern int NMRModel;
 
 #ifdef FUNCPROTO
-void CreateChain( int );
+void CreateChain( char* );
 void CreateGroup( int );
 void ProcessGroup( int );
 void CreateMolGroup();

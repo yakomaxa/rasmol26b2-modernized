@@ -1509,22 +1509,22 @@ static void DescribeAtom( ptr, flag )
     AtomRef *ptr;  int flag;
 {
     register char *str;
-    register int i,ch;
+    register int i;
     char buffer[40];
 
     str = Residue[ptr->grp->refno];
     for( i=0; i<3; i++ )
-        if( str[i]!=' ' ) 
+        if( str[i]!=' ' )
              WriteChar(str[i]);
 
     sprintf(buffer,"%d",ptr->grp->serno);
     WriteString(buffer);
 
-    ch = ptr->chn->ident;
-    if( ch != ' ' )
-    {   if( isdigit(ch) )
+    str = ptr->chn->ident;
+    if( *str != ' ' )
+    {   if( (str[1]) || isdigit(*str) )
             WriteChar(':');
-        WriteChar(ch);
+        WriteString(str);
     }
 
     WriteChar('.');
@@ -1584,9 +1584,9 @@ void PickAtom( shift, xpos, ypos )
             sprintf(buffer," %d",QGroup->serno);
             WriteString(buffer);
 
-            if( QChain->ident!=' ' )
+            if( QChain->ident[0]!=' ' )
             {   WriteString("  Chain: ");
-                WriteChar(QChain->ident);
+                WriteString(QChain->ident);
             }
             WriteChar('\n');
 
@@ -1596,7 +1596,7 @@ void PickAtom( shift, xpos, ypos )
                 {   strcpy(buffer,"%n%r");
                     str = buffer+4;
                     if( InfoChainCount > 1 )
-                    {   if( isdigit(QChain->ident) )
+                    {   if( QChain->ident[1] || isdigit(QChain->ident[0]) )
                             *str++ = ':';
                         *str++ = '%';
                         *str++ = 'c';

@@ -206,8 +206,8 @@ static void WriteMolScriptAtomSel( chain, group, aptr )
             fputc(ptr[i],OutFile);
 
     fputs(" and in residue ",OutFile);
-    if( chain->ident!=' ' && !isdigit(chain->ident) )
-        fputc(chain->ident,OutFile);
+    if( (chain->ident[0]!=' ') && !isdigit(chain->ident[0]) )
+        fputs(chain->ident,OutFile);
     fprintf(OutFile,"%d",group->serno);
 }
 
@@ -257,10 +257,10 @@ static void WriteMolScriptAtoms()
 #endif
 
 static void MolScriptSegment( ptr, src, dst, chain )
-    char *ptr;  int src, dst;  char chain;
-{   
-    if( (chain!=' ') && !isdigit(chain) ) 
-    {   fprintf(OutFile,"  %s from %c%d to %c%d;\n",ptr,chain,src,chain,dst);
+    char *ptr;  int src, dst;  char *chain;
+{
+    if( (chain[0]!=' ') && !isdigit(chain[0]) )
+    {   fprintf(OutFile,"  %s from %s%d to %s%d;\n",ptr,chain,src,chain,dst);
     } else fprintf(OutFile,"  %s from %d to %d;\n",ptr,src,dst);
 }
 
@@ -362,8 +362,8 @@ int WriteMolScriptFile( name )
                 } else 
                 {   if( flag&TurnFlag )
                     {   fputs("  turn residue ",OutFile);
-                        if( chain->ident != ' ' )
-                            fputc(chain->ident,OutFile);
+                        if( chain->ident[0] != ' ' )
+                            fputs(chain->ident,OutFile);
                         fprintf(OutFile,"%d;\n",group->serno);
                     }
                     if( !prev ) prev = group;
@@ -1423,7 +1423,7 @@ int WriteKinemageFile( name )
 
     if( InfoChainCount>1 )
     {   for( chain=Database->clist; chain; chain=chain->cnext )
-        {   fprintf(OutFile,"@group {chain %c}\n",chain->ident);
+        {   fprintf(OutFile,"@group {chain %s}\n",chain->ident);
             WriteKinemageSpheres( chain );
             WriteKinemageBonds( chain );
             WriteKinemageRibbons( chain );

@@ -235,9 +235,10 @@ static void RegisterAlloc( data )
 /*==================================*/
 
 void CreateChain( ident )
-    int ident;
+    char *ident;
 {
     register Chain __far *prev;
+    register int i;
 
     if( !CurMolecule )
     {   if( !(CurMolecule = FreeMolecule) )
@@ -273,7 +274,12 @@ void CreateChain( ident )
     } else CurMolecule->clist = CurChain;
     CurChain->cnext = (void __far*)0;
      
-    CurChain->ident = ident;
+    i = 0;
+    while( ident[i] && (i<MAXCHAINID-1) )
+    {   CurChain->ident[i] = ident[i];  i++; }
+    CurChain->ident[i] = '\0';
+    CurChain->identval = ChainIdentValue( CurChain->ident );
+
     CurChain->model = NMRModel;
     CurChain->glist = (void __far*)0;
     CurChain->blist = (void __far*)0;
@@ -386,7 +392,7 @@ void CreateMolGroup()
 {
     strcpy(InfoFileName,DataFileName);
 
-    CreateChain( ' ' );
+    CreateChain( " " );
     CreateGroup( 1 );
 
     CurGroup->refno = FindResNo( "MOL" );

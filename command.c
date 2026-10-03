@@ -1258,8 +1258,13 @@ static Expr *ParseRange( neg )
 
     ch = *TokenPtr;
     if( isalnum(ch) )
-    {   ch = ToUpper(ch);
-	TokenPtr++;
+    {   char chainbuf[MAXCHAINID];
+	register int i;
+
+	i = 0;
+	while( isalnum(*TokenPtr) && (i<MAXCHAINID-1) )
+	    chainbuf[i++] = ToUpper(*TokenPtr++);
+	chainbuf[i] = '\0';
 
 	tmp2 = AllocateNode();
 	tmp2->type = OpAnd;
@@ -1267,8 +1272,8 @@ static Expr *ParseRange( neg )
 
 	tmp1 = AllocateNode();
 	tmp1->type = OpEqual | OpLftProp | OpRgtVal;
-	tmp1->lft.val = PropChain;               
-	tmp1->rgt.val = ch;
+	tmp1->lft.val = PropChain;
+	tmp1->rgt.val = ChainIdentValue(chainbuf);
 
 	tmp2->lft.ptr = tmp1;
 	tmp1 = tmp2;
@@ -2177,7 +2182,7 @@ static void ExecuteShowCommand()
 			if( grp->alist && !(grp->alist->flag&HeteroFlag) )
 			{   if( !chain )
 			    {   WriteString("Chain ");
-				WriteChar(chn->ident);
+				WriteString(chn->ident);
 				WriteString(":\n");
 				chain = True;
 			    }

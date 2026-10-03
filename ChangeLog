@@ -1,3 +1,53 @@
+[04/10/26]	molecule.h molecule.c infile.c abstree.h abstree.c command.c
+		render.c repres.c script.c transfor.c
+		Widened Chain.ident from a single char to a string (char
+		ident[MAXCHAINID], MAXCHAINID=8 in molecule.h), so the mmCIF
+		reader no longer has to truncate auth_asym_id to its first
+		character - previously chains "AA" and "AB" (common in large
+		complexes: cryo-EM assemblies, AlphaFold-Multimer, viral
+		capsids) silently collided into the same RasMol chain "A".
+		Added Chain.identval (Long), the first 4 characters packed
+		into one int, computed once in CreateChain(); this is what
+		the selection language's generic property-comparison engine
+		(EvaluateProperty's PropChain case) actually compares, since
+		that machinery only knows how to compare scalar ints for
+		every property (residue number, atom name, chain, ...) -
+		selecting by chain name beyond 4 characters just doesn't
+		disambiguate on the extra characters, which is not a
+		realistic limit for any real structure. Updated every call
+		site: the PDB and CHARMM loaders (which only ever produce
+		single character idents - added a ChainIdentIs() helper in
+		infile.c for their comparisons), the mmCIF loader (now uses
+		the full auth_asym_id/label_asym_id string), both places that
+		parse "chain" out of the selection language ("123:AB" in
+		command.c's ParseRange, and the PDB zone-string mini-grammar
+		"RES123:AB.ATOM" in abstree.c's ParsePrimitiveExpr - both now
+		consume a run of alnum characters instead of exactly one),
+		and every display/export path (FormatLabel's %c/%s, "show
+		sequence", PickAtom/DescribeAtom, the cartoon label-template
+		chooser in repres.c, MolScript/Kinemage export in script.c).
+		Two places are structurally stuck at one character regardless
+		and are left truncating to the first character, documented in
+		place: SavePDBMolecule (real PDB format's chain column is
+		physically one character) and the legacy, rarely used PDB
+		COLOR record mask-matching extension in transfor.c.
+		Caught and fixed a real bug surfaced while testing this:
+		ChainIdentValue()'s packing loop read name[i] independently
+		at each of the 4 positions instead of latching "ended" at the
+		first NUL, so uninitialized stack/heap bytes *after* a short
+		chain name's terminator could leak into the packed comparison
+		value. This silently broke "select X and :A"-style queries
+		(any selection combining a chain with anything else) for
+		ordinary single-character chains too, whenever the stale
+		memory differed between where the value was built and where
+		it was compared - a real, independently-discovered bug, not
+		specific to multi-character chains. Verified with a synthetic
+		3-chain ("A"/"AA"/"AB") mmCIF file: correct chain/atom counts,
+		no collisions, "select :AA", "select 1:AB", "select protein
+		and :A" and the zone-string form all distinguish chains
+		correctly, and the full PDB/mmCIF regression suite (1crn,
+		1mbn, 7dns, the AlphaFold P05067 prediction) is unchanged.
+
 [04/10/26]	sdlwin.c
 		Fixed a SIGSEGV when live-resizing the SDL window by dragging
 		an edge (reported as "always crashes on mouse-up when
