@@ -7,7 +7,7 @@
 # 1990s Unix compilers and raw X11/Xlib. See sdlwin.c for the display
 # backend that replaced x11win.c.
 
-CC = gcc
+CC = gcc-13
 CFLAGS = -g -O2 -finline-functions $(shell sdl2-config --cflags)
 
 # For Debugging use LFLAGS =

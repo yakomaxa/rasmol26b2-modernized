@@ -1,3 +1,30 @@
+[04/10/26]	sdlwin.c
+		Fixed a SIGSEGV when live-resizing the SDL window by dragging
+		an edge (reported as "always crashes on mouse-up when
+		launched with -size, but not from the default launch size").
+		TransferImage() blits FBuffer into Texture using the *current*
+		XRange as the source pitch, but XRange/YRange are updated the
+		instant SDL_WINDOWEVENT_RESIZED/SIZE_CHANGED arrives, while
+		Texture and FBuffer are only reallocated to match later, in
+		CreateImage() (called from RefreshScreen()'s ReSizeScreen()).
+		macOS's live-resize drag fires SDL_WINDOWEVENT_EXPOSED
+		repeatedly *during* the drag, and that handler called
+		TransferImage() directly - outside the normal resize-then-
+		redraw sequence - so it would blit at the new (larger) pitch
+		against the still old-sized Texture/FBuffer, overreading the
+		FBuffer heap allocation. This is not actually specific to
+		-size (same race exists at the default size), but a bigger
+		or non-default starting size makes it far more likely the
+		overread lands on an unmapped page instead of adjacent heap
+		slack, so it crashes reliably instead of silently corrupting
+		nearby memory. Fixed by having TransferImage() check the
+		Texture's actual dimensions (SDL_QueryTexture) against
+		XRange/YRange and skip the blit if they don't match yet; the
+		pending resize's own RefreshScreen() (which already runs
+		within the same ~20ms HandleEvents() tick, since mouse-drag
+		responsiveness depends on it) redraws correctly once buffers
+		are resized, so no visible stall.
+
 [03/10/26]	rasmol.c
 		Added a "-size WIDTHxHEIGHT" (or "-size N" for a square
 		window) command-line option, since the compiled-in default

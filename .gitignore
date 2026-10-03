@@ -1,0 +1,9 @@
+# Build artifacts
+*.o
+rasmol
+
+# Empty leftover artifacts from the original distribution / test runs
+log.txt
+
+# Claude Code project-local settings (not part of the project)
+.claude/

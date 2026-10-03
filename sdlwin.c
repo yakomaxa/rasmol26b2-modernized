@@ -303,7 +303,19 @@ int CreateImage()
 
 void TransferImage()
 {
+    int texW, texH;
+
     if( !Texture ) return;
+
+    /* A live edge-drag fires EXPOSED (-> here) before CreateImage()
+     * resizes Texture/FBuffer to match the already-updated XRange/
+     * YRange; blitting at the new pitch into the old-sized buffer
+     * overreads FBuffer. Skip stale frames; the pending resize's own
+     * RefreshScreen() redraws correctly once buffers are resized.
+     */
+    if( SDL_QueryTexture(Texture,NULL,NULL,&texW,&texH) ||
+        (texW!=XRange) || (texH!=YRange) )
+        return;
 
     SDL_UpdateTexture( Texture, NULL, FBuffer, XRange*sizeof(Pixel) );
     SDL_RenderClear( Renderer );
