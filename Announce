@@ -1,0 +1,126 @@
+
+
+                            RasMol 2.5
+              Molecular Graphics Visualisation tool.
+
+                           Roger Sayle 
+                  BioMolecular Structures Group
+                   Glaxo Research & Development
+                     Greenford, Middlesex, UK.
+                           October 1994
+
+
+    This posting is to announce the release of RasMol version 2.5. This
+latest version is available for the Apple Macintosh and PowerMac in 
+addition to UNIX, VMS and Microsoft Windows versions. RasMol is a molecular 
+graphics program intended for the visualisation of proteins, nucleic acids 
+and small molecules. The program is aimed at display, teaching and 
+generation of publication quality images. The program has been developed 
+at the University of Edinburgh's Biocomputing Research Unit and the 
+Biomolecular Structure Department at Glaxo Research and Development, 
+Greenford, UK. This latest version is has a significant number of 
+improvements over RasMol 2.4. In addition to performance improvements and
+bug fixes, the major enhancements are described at the end of this message. 
+For a complete list of changes refer to the distribution's "ChangeLog".
+
+    RasMol reads in molecular co-ordinate files in a number of formats and
+interactively displays the molecule on the screen in a variety of colour
+schemes and representations. Currently supported input file formats include
+Brookhaven Protein Databank (PDB), Tripos' Alchemy and Sybyl Mol2 formats,
+Molecular Design Limited's (MDL) Mol file format, Minnesota Supercomputer
+Center's (MSC) XMol XYZ format and CHARMm format files. If connectivity
+information and/or secondary structure information is not contained in the
+file this is calculated automatically. The loaded molecule may be shown as
+wireframe, cylinder (Dreiding) stick bonds, alpha-carbon trace, spacefilling
+(CPK) spheres, macromolecular ribbons (either smooth shaded solid ribbons
+or parallel strands), hydrogen bonding and dot surface. Atoms may also be
+labelled with arbitrary text strings. Different parts of the molecule may be
+displayed and coloured independently of the rest of the molecule or shown in
+different representations simultaneously. The space filling spheres can even
+be shadowed. The displayed molecule may be rotated, translated, zoomed, 
+z-clipped (slabbed) interactively using either the mouse, the scroll bars, 
+the command line or an attached dials box. RasMol can read a prepared list 
+of commands from a `script' file (or via interprocess communication) to 
+allow a given image or viewpoint to be restored quickly. RasMol can also
+create a script file containing the commands required to regenerate the 
+current image. Finally the rendered image may be written out in a variety 
+of formats including both raster and vector PostScript, GIF, PPM, BMP, PICT,
+Sun rasterfile or as a MolScript input script or Kinemage.
+
+    RasMol will run on a wide range of architectures and systems including 
+SGI, sun4, sun3, sun386i, DEC, HP and E&S workstations, IBM RS/6000, 
+Cray, Sequent, DEC Alpha (OSF/1, OpenVMS and Windows NT), IBM PC (under 
+Microsoft Windows, Windows NT, OS/2, Linux, BSD386 and *BSD), Apple 
+Macintosh (System 7.0 or later), PowerMac and VAX VMS (under DEC Windows).
+UNIX and VMS versions require an 8bit, 24bit or 32bit X Windows frame 
+buffer (X11R4 or later). The X Windows version of RasMol provides optional 
+support for a hardware dials box and accelerated shared memory rendering 
+(via the XInput and MIT-SHM extensions) if available.
+
+    The source code is public domain and freely distributable provided that
+the original author is suitably acknowledged. The complete source code and
+user documentation may be obtained by anonymous FTP from ftp.dcs.ed.ac.uk
+[129.215.160.5] in the directory /pub/rasmol. The source code, documentation
+and Microsoft Windows executables are stored in several files appropriate
+for the receiving operating system. Please read the "README" file in the
+distribution directory. UNIX and VAX systems should retreive either 
+RasMol2.tar.Z, RasMol2.tar.gz. Apple Mac users should retrieve rasmac.sit.hqx.
+Microsoft Windows users should retrieve raswin.zip and optionally the Visual
+Basic package rasmenu.zip. All these files include source code, on-line help,
+user manual and reference card. RasMac.sit.hqx, RasWin.zip and RasMenu.zip
+also contain executables for the required platform. Please remember to use 
+"binary" mode when transferring these files between systems. Check that the 
+file size is the same before and after transfer.
+
+    Any comments, suggestions or questions about the package may be directed
+to the author at "rasmol@ggr.co.uk".
+
+
+
+Enhancements since Version 2.4 [June 1994]
+
+  o Developed an Apple Macintosh version of RasMol. `RasMac' requires 
+    System 7.0 or later and can compile under Symantec C/C++ or Metrowerks
+    C/C++ compilers for either the 68k or PPC. A `fat' binary is included
+    in the Macintosh distribution. RasMac can be used under MacMosaic.
+
+  o Implemented atom labelling, any atom (or set of atoms) may be labelled 
+    by an arbitrary text string. Embedded characters allow the display of
+    atomic symbol, residue name, residue number, atom name etc...
+
+  o Added support for the entire periodic table of elements. In addition
+    to VdW radii and CPK colours this allows atoms to be selected by name,
+    e.g. "select copper,zinc", and by atomic number, "select elemno>=35".
+
+  o Improved the algorithms used to determine connectivity. RasMol now
+    uses the covalent radius of each element to determine bonding for
+    `small molecules'. The algorithm used may be selected with the
+    "connect" command. This also fixes problems reading CONECT records
+    in non-standard PDB files and allows PDB files to specify bond order.
+
+  o RasMol now allows distances and radii to be given in Angstroms if
+    they contain a decimal point. Non-integer values may also be given
+    to the "slab", "zoom", "rotate" and "translate" commands.
+
+  o Added the ability to generate Kinemage format files for display in
+    David Richardson's Mage program (as distributed by Protein Science).
+    Added the ability to generate Apple PICT files on all platforms.
+
+  o Add the "colour atoms charge" and "colour dots potential" to colour
+    code atoms by their charge and dot surfaces by their electrostatic
+    potential respectively. [For files containing charge information!]
+
+  o Improved the X Windows user interface using Motif-style pull-down
+    menus instead of buttons. Added (improved) support for SGI's hardware 
+    dials boxes.
+
+  o Significantly reduced the size of generated RasMol scripts. The "save"
+    and "write" commands no longer work in scripts to be safe under Mosaic.
+
+
+Roger
+-- 
+Roger Sayle,                       INTERNET:  ras32425@ggr.co.uk
+Glaxo Research & Development (GRD)            ros@dcs.ed.ac.uk
+Greenford Road, Greenford          Tel:   (+44) 081 966 3567 (direct line)
+Middlesex UB6 0HE, UK.             Fax:   (+44) 081 966 4476

@@ -1,0 +1,29 @@
+RasMol 2.6-beta-2 is Copyright (c) Roger Sayle, 1992-1999.
+
+RasMol was originally developed at the University of Edinburgh's
+Biocomputing Research Unit, and subsequently at the Biomolecular
+Structures Group, Glaxo Wellcome Research & Development, Stevenage,
+Hertfordshire, UK.
+
+From the original RasMol distribution (UMass RasMol source page,
+https://www.umass.edu/microbio/rasmol/srccode.htm, mirroring Roger
+Sayle's University of Edinburgh FTP site, the canonical source):
+
+    "The source code is public domain and freely distributable
+     provided that the original author is suitably acknowledged."
+
+This repository is a modernized fork of RasMol 2.6-beta-2
+(RasMol26b2.tar.gz; the pristine tarball is kept at
+source/RasMol26b2.tar.gz for reference). See README.RASMOL-ORIGINAL
+for the original README and ChangeLog for the full dated history of
+changes, both the original 1992-1999 development and everything
+added by this fork.
+
+All modifications in this repository -- including but not limited to
+the SDL2 display backend, the mmCIF/PDBx reader, file-format
+auto-detection, and the various bug fixes described in ChangeLog --
+are distributed under these same terms: freely usable, modifiable
+and distributable, provided Roger Sayle is acknowledged as RasMol's
+original author.
+
+No warranty of any kind is given or implied.

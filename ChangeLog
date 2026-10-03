@@ -1,0 +1,150 @@
+[03/10/26]	rasmol.c
+		Fixed main()'s interactive command loop spinning at 100% CPU
+		forever once stdin reaches EOF without an "exit"/"quit" ever
+		being issued (e.g. a piped/automated session, or closing the
+		terminal with Ctrl-D) - ReadCharacter()'s EOF (-1) was never
+		checked, so FetchCharacter()/getc(stdin) kept returning EOF
+		millions of times a second with nothing to stop the loop.
+		Compounding this, the loop variable "ch" was declared char,
+		which is unsigned on this aarch64 target, so EOF (-1) got
+		silently truncated to 255 before any check could even see it
+		- widened it to int and added a "ch==EOF -> break" check,
+		which reaches the same RasMolExit() a "quit" command does.
+		This is independent of -script: LoadScriptFile() (command.c)
+		reads script files through its own getc(fp) loop, so sourcing
+		a script of predefined selections/styles and then continuing
+		interactively (-script setup.rsc, no quit at the end of the
+		script) is unaffected; only the real stdin stream's own EOF
+		is now handled.
+
+[03/10/26]	rasmol.c
+		Fixed a double-free that aborted RasMol (SIGABRT, glibc
+		"double free detected in tcache") at the end of almost any
+		-script run. main()'s own fclose(fp) right after calling
+		LoadScriptFile(fp,...) was closing a FILE* that
+		LoadScriptFile() (command.c) already closes itself on every
+		return path (end of script, "exit" command, or process exit
+		via "quit"/RasMolExit()), so the handle's heap buffer got
+		freed twice. Confirmed fixed, and the rest of the run is
+		clean, under valgrind --error-exitcode. Spotted this while
+		investigating what looked like mmCIF reader crashes, but the
+		bug is unrelated to parsing and just as reproducible loading
+		a plain PDB file via -script.
+
+[03/10/26]	rasmol.c command.c infile.c transfor.h
+		Cleaned up every warning the modern gcc/SDL2 build was
+		producing (make now builds silent). Added the missing
+		SetTraceTemperature() prototype to transfor.h (was an
+		implicit-int declaration in command.c); added a top level
+		<string.h> include to rasmol.c (strcmp etc. were implicitly
+		declared outside the VMS build); fixed select()'s unused
+		fd_set* arguments casting to a nonexistent "struct fd_set"
+		type instead of the real fd_set typedef; added braces round
+		an if/for/if-else chain in infile.c's ProcessFeatures() that
+		gcc flagged as a dangling-else trap; gave SavePDBMolecule's
+		"ch" TER-record variable an initial value to resolve a
+		maybe-uninitialized warning (prev/ch are always set together,
+		so this was a flow-analysis false positive, not a real bug);
+		replaced the strncpy() calls added for the mmCIF loop-row
+		reader with a small memcpy based helper, since GCC's
+		stringop-truncation check can't see the explicit NUL write
+		that already followed; and reworked InitHelpFile's priming
+		fgets() so its result is actually inspected, since glibc's
+		fortified fgets is marked warn_unused_result in a way a bare
+		(void) cast does not silence.
+
+[03/10/26]	infile.c infile.h command.c command.h rasmol.c
+		Added a dependency-free mmCIF reader (LoadCIFMolecule, in
+		infile.c), since RasMol previously only knew how to write
+		CIF (SaveCIFMolecule) and not read it. Implements a small
+		tag/loop tokeniser for the subset of the mmCIF grammar the
+		PDB/AlphaFold actually emit ('#' comments, quoted strings,
+		';' multi-line text fields) and structurally parses the
+		"_atom_site" loop by column name rather than fixed column
+		position, since mmCIF is tag/loop based, not column based
+		like PDB. Atom/element typing is built to match the same
+		4-column convention ComplexAtomType()/GetElemNumber() use
+		for PDB files (justified by the explicit type_symbol rather
+		than guessed from column position), so CIF-loaded structures
+		get the same backbone tracing, cartoons and element colouring
+		as PDB ones. A few summary fields (_entry.id, _struct.title,
+		_cell.*, _symmetry.*) are also read to populate the same
+		fields HEADER/COMPND/CRYST1 fill in for PDB. Hooked up via
+		the existing (previously write-only) FormatCIF plumbing in
+		command.c's FetchFile.
+		Also added GuessMoleculeFormat() (command.c/command.h),
+		since without it a bare "load foo.cif" or "rasmol foo.cif"
+		silently defaulted to the fixed-column PDB parser, which
+		misreads free-form CIF text as 80-column fields and produces
+		garbage, visually flattened coordinates. Format is now
+		guessed from the .cif/.mmcif extension whenever the user
+		doesn't say otherwise, in both the "load" command and the
+		command-line filename argument; explicit "-cif"/"load cif"
+		are unaffected. Added "-cif" to the -help usage line.
+
+[03/10/26]	sdlwin.c rasmol.h rasmol.c Makefile Makefile.in
+		Replaced the X11/Xlib display backend (x11win.c) with a new
+		SDL2 backend (sdlwin.c), so RasMol no longer needs an X
+		server (ie. XQuartz on macOS) to run. x11win.c drew its own
+		menu bar, scrollbars and dials-box by hand with raw Xlib
+		calls on top of blitting the renderer's framebuffer; the
+		menu/scrollbar/dials-box chrome has been dropped in favour
+		of RasMol's existing command language, but mouse-driven
+		rotate/translate/zoom/slab, click-to-pick and window resize
+		all still work and were ported across unchanged in spirit.
+		Also fixed Card/Long/Pixel (rasmol.h) to be pinned to 32 bits
+		via _LONGLONG, since plain "long" is 64 bits on modern LP64
+		systems and was silently corrupting the pixel-packing code;
+		switched on THIRTYTWOBIT (24-bit true colour) as the default
+		since 256-colour displays are now obsolete. Tightened the
+		stdin/event poll in rasmol.c from 1s to 20ms while a display
+		window is open, for responsive dragging. Makefile/Makefile.in
+		now build against SDL2 (via sdl2-config) instead of hardcoded
+		per-workstation X11 flags from 1995.
+
+[09/04/96]	script.c
+		Modified the generation of script files to fix a bug in
+		writing the "colour axes" command to include commas. Special
+		to Guy Slater.
+
+[29/03/96]	script.c
+		Modified the generation of script files to avoid writing
+		"colour ribbons none" at each residue, which is the default.
+		Thanks to Alan Lewis.
+
+[21/11/95]	command.c
+		Changed the conditions in FetchFile on when RasMol determines
+		bonds itself to the condition "bonds < atoms-chains".  This
+                allows multiple connected fragments.  Thanks to William Hart.
+
+[10/11/95]	infile.c x11win.c
+		Made several #ifdef VMS changes to allow RasMol to compile
+                with VAX C.  Thanks to Gail Schuman.
+
+[10/11/95]	pixutils.h pixutils.c repres.c
+		Changed the field names hx, hy and hz in structure Knot to
+                to dx, dy and dz to avoid clash with predefined AIX macro hz.
+                Thanks to Hiroki Morizono.
+
+[09/11/95]	transfor.c
+		Fixed bug in ApplyTransform() that caused RasMol to crash if
+		all atoms have the same co-ordinates. Thanks to Guy Slater.
+
+[06/11/95]	script.c
+		Fixed bug in RasMol script generation that outputs the
+		background colour before the zap command (which resets
+		the background colour to black). Thanks to Niels Kristian 
+                Bech Jensen.
+
+[20/10/95]      infile.c
+		Fixed bug in RasMol CHARMm file format reader.  RasMol now
+                uses the standard PDB residue numbering in column 56, rather
+                than the sequential numbering in column 5.  Thanks to Milan
+                Hodoscek
+
+[28/10/94]      !Announced the public release of RasMol, RasMac and RasWin 
+                version 2.5, available by anonymous FTP from ftp.dcs.ed.ac.uk
+		[129.215.160.5] in the directory /pub/rasmol. The announcement
+		was made in bionet.software, bionet.announce, sci.bio,
+		sci.chem, comp.graphics.visualisation, bionet.xtallography
+		and sci.techniques.xtallography newsgroups.

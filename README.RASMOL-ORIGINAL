@@ -1,0 +1,78 @@
+
+
+                            RasMol 2.6
+              Molecular Graphics Visualisation tool.
+
+                           Roger Sayle 
+                  Biomolecular Structures Group
+              Glaxo Wellcome Research & Development
+                  Stevenage, Hertfordshire, UK.
+                          September 1995
+
+
+    RasMol is a molecular graphics program intended for the visualisation 
+of proteins, nucleic acids and small molecules. The program is aimed at 
+display, teaching and generation of publication quality images. The program 
+has been developed at the University of Edinburgh's Biocomputing Research 
+Unit and the Biomolecular Structures Group at Glaxo Research and Development, 
+Greenford, UK. 
+
+    RasMol reads in molecular co-ordinate files in a number of formats and
+interactively displays the molecule on the screen in a variety of colour
+schemes and representations. Currently supported input file formats include
+Brookhaven Protein Databank (PDB), Tripos' Alchemy and Sybyl Mol2 formats,
+Molecular Design Limited's (MDL) Mol file format, Minnesota Supercomputer
+Center's (MSC) XMol XYZ format and CHARMm format files. If connectivity
+information and/or secondary structure information is not contained in the
+file this is calculated automatically. The loaded molecule may be shown as
+wireframe, cylinder (drieding) stick bonds, alpha-carbon trace, spacefilling
+(CPK) spheres, macromolecular ribbons (either smooth shaded solid ribbons
+or parallel strands), hydrogen bonding and dot surface. Atoms may also be
+labelled with arbitrary text strings. Different parts of the molecule may be
+displayed and coloured independently of the rest of the molecule or shown in
+different representations simultaneously. The space filling spheres can even
+be shadowed. The displayed molecule may be rotated, translated, zoomed, 
+z-clipped (slabbed) interactively using either the mouse, the scroll bars, 
+the command line or an attached dials box. RasMol can read a prepared list 
+of commands from a `script' file (or via interprocess communication) to 
+allow a given image or viewpoint to be restored quickly. RasMol can also
+create a script file containing the commands required to regenerate the 
+current image. Finally the rendered image may be written out in a variety 
+of formats including both raster and vector PostScript, GIF, PPM, BMP, PICT,
+Sun rasterfile or as a MolScript input script or Kinemage.
+
+    RasMol will run on a wide range of architectures and systems including 
+SGI, sun4, sun3, sun386i, SGI, DEC, HP and E&S workstations, IBM RS/6000, 
+Cray, Sequent, DEC Alpha (OSF/1, OpenVMS and Windows NT), IBM PC (under 
+Microsoft Windows, Windows NT, OS/2, Linux, BSD386 and *BSD), Apple 
+Macintosh (System 7.0 or later), PowerMac and VAX VMS (under DEC Windows).
+UNIX and VMS versions require an 8bit, 24bit or 32bit X Windows frame 
+buffer (X11R4 or later). The X Windows version of RasMol provides optional 
+support for a hardware dials box and accelerated shared memory rendering 
+(via the XInput and MIT-SHM extensions) if available.
+
+    The source code is public domain and freely distributable provided that
+the original author is suitably acknowledged. The complete source code and
+user documentation may be obtained by anonymous FTP from ftp.dcs.ed.ac.uk
+[129.215.160.5] in the directory /pub/rasmol. The source code, documentation
+and Microsoft Windows executables are stored in several files appropriate
+for the receiving operating system. Please read the "README" file in the
+distribution directory. UNIX and VAX systems should retreive either 
+RasMol2.tar.Z, RasMol2.tar.gz. Apple Mac users should retrieve RasMac.sit.hqx.
+Microsoft Windows users should retrieve RasWin.zip and optionally the Visual
+Basic package RasMenu.zip. All these files include source code, on-line help,
+user manual and reference card. RasMac.sit.hqx, RasWin.zip and RasMenu.zip
+also contain executables for the required platform. Please remember to use 
+"binary" mode when transferring these files between systems. Check that the 
+file size is the same before and after transfer.
+
+    Any comments, suggestions or questions about the package may be directed
+to the author at "rasmol@ggr.co.uk".
+
+Roger
+-- 
+-- 
+Roger Sayle                                INTERNET:  ras32425@ggr.co.uk
+Glaxo Wellcome Medicines Research Centre,             rasmol@ggr.co.uk
+Gunnels Wood Road, Stevenage,        Tel:   +44 (0)1438 763246 (direct line)
+Hertfordshire, SG1 2NY, U.K.         Fax:   +44 (0)1438 763082
