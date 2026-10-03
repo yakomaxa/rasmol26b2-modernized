@@ -50,6 +50,10 @@ list and supported-platform history are preserved verbatim in
   mmCIF text as 80-column fields and produces garbage, visibly
   flattened coordinates. Explicit `-cif` / `load cif ...` still work
   as before.
+- **`-size WIDTHxHEIGHT`** command-line option, since the compiled-in
+  576x576 default window is small on a modern display and previously
+  needed a manual resize on every launch (`-size N` also works, for a
+  square window).
 - **Bug fixes** found while testing the above:
   - A double-free that aborted (`SIGABRT`) almost any `-script` run —
     `main()` was closing the script file handle a second time after
@@ -99,6 +103,7 @@ Linux/macOS).
 ./rasmol data/1crn.pdb                     # PDB
 ./rasmol somestructure.cif                 # mmCIF, auto-detected from the extension
 ./rasmol -cif somefile.txt                 # force mmCIF when the extension doesn't give it away
+./rasmol -size 1200x900 data/1crn.pdb      # bigger starting window (default is a cramped 576x576)
 ./rasmol -nodisplay -script myscript.rsc   # headless / scripted use
 ```
 

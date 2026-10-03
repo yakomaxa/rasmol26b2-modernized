@@ -102,6 +102,8 @@ static char *ScriptNamePtr;
 static int LabelOptFlag;
 static int FileFormat;
 static int FileFormatGiven;
+static int WindowWide;
+static int WindowHigh;
 static int ProfCount;
 static int LexState;
 
@@ -945,9 +947,38 @@ static void ProfileExecution()
 static void DisplayUsage()
 {
     fputs("usage: rasmol [-nodisplay] [-script scriptfile] ",OutFp);
-    fputs("[[-format] file]\n    formats: -pdb -nmrpdb -cif ",OutFp);
+    fputs("[-size WxH] [[-format] file]\n    formats: -pdb -nmrpdb -cif ",OutFp);
     fputs("-mopac -mdl -mol2 -xyz -alchemy -charmm\n\n",OutFp);
     exit(1);
+}
+
+
+/* Parse a "-size" argument of the form "WIDTHxHEIGHT" or just "SIZE"
+ * (for a square window) into WindowWide/WindowHigh. Returns False
+ * (leaving WindowWide/WindowHigh untouched) on any malformed input.
+ */
+static int ParseWindowSize( ptr )
+    char *ptr;
+{
+    register int wide, high;
+
+    wide = 0;
+    while( (*ptr>='0') && (*ptr<='9') )
+        wide = wide*10 + (*ptr++ - '0');
+
+    if( (*ptr=='x') || (*ptr=='X') )
+    {   ptr++;
+        high = 0;
+        while( (*ptr>='0') && (*ptr<='9') )
+            high = high*10 + (*ptr++ - '0');
+    } else high = wide;
+
+    if( *ptr || (wide<40) || (high<40) || (wide>8192) || (high>8192) )
+        return( False );
+
+    WindowWide = wide;
+    WindowHigh = high;
+    return( True );
 }
 
 
@@ -998,6 +1029,10 @@ static void ProcessOptions(argc,argv)
                 {   ScriptNamePtr = argv[++i];
                 } else DisplayUsage();
 
+            } else if( !strcmp(ptr,"size") )
+            {   if( (i==argc-1) || !ParseWindowSize(argv[++i]) )
+                    DisplayUsage();
+
             } else if( !strcmp(ptr,"sybyl") )
             {   FileFormat = FormatMol2;
                 FileFormatGiven = True;
@@ -1040,6 +1075,8 @@ int argc; char *argv[];
     ScriptNamePtr = NULL;
     FileFormat = FormatPDB;
     FileFormatGiven = False;
+    WindowWide = InitialWide;
+    WindowHigh = InitialHigh;
     LabelOptFlag = False;
     Interactive = True;
     ProfCount = 0;
@@ -1054,7 +1091,7 @@ int argc; char *argv[];
     
     temp = Interactive;
     setbuf(OutFp,(char *)NULL);
-    Interactive = OpenDisplay(InitialWide,InitialHigh);
+    Interactive = OpenDisplay(WindowWide,WindowHigh);
     InitTerminal(Interactive);
     signal(SIGINT,RasMolSignalExit);
 

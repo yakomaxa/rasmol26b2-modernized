@@ -1,4 +1,17 @@
 [03/10/26]	rasmol.c
+		Added a "-size WIDTHxHEIGHT" (or "-size N" for a square
+		window) command-line option, since the compiled-in default
+		window size (576x576, from graphics.h's InitialWide/
+		InitialHigh) is cramped on modern high-DPI displays and
+		previously required a manual resize every launch. Window
+		dimensions now flow through new WindowWide/WindowHigh
+		variables (defaulting to InitialWide/InitialHigh, so nothing
+		changes if the flag isn't given) instead of main() passing
+		the InitialWide/InitialHigh macros straight to OpenDisplay().
+		Rejects malformed or out-of-range (<40 or >8192 per side)
+		sizes with the usage message, same as other bad flags.
+
+[03/10/26]	rasmol.c
 		Fixed main()'s interactive command loop spinning at 100% CPU
 		forever once stdin reaches EOF without an "exit"/"quit" ever
 		being issued (e.g. a piped/automated session, or closing the
