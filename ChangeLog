@@ -1,3 +1,217 @@
+[04/10/26]	command.c
+		Fixed the "structure" command silently doing nothing on
+		files whose secondary structure was already assigned (either
+		by a prior cartoon/ribbons render, or by the PDB's own
+		HELIX/SHEET records at load time). The lazy-recompute gate
+		added for cartoon/ribbons et al (skip recalculating if
+		InfoHelixCount is already set) was accidentally also guarding
+		the StructureTok handler, which in the original 1995 code
+		always force-recomputed unconditionally - "structure" is an
+		explicit user request to (re)run DSSP-style assignment, not a
+		rendering path that can tolerate a stale cache. Fixed by
+		resetting InfoHelixCount = -1 immediately before the
+		DetermineStructure() calls in this one handler, leaving the
+		lazy-cache behaviour untouched everywhere else. Found while
+		testing the nucleic-acid overflow fix below on data/3cro.pdb,
+		whose own PDB HELIX records pre-populate InfoHelixCount before
+		any script command runs - "structure true" now correctly
+		recomputes (130 H-Bonds, 0 Helices, 0 Strands, 22 Turns; the 0
+		Helices is DSSP-style geometric recomputation legitimately
+		disagreeing with the PDB author's annotation, not a bug).
+
+[04/10/26]	molecule.c
+		Fixed the same Long (32-bit) distance-squared overflow bug
+		documented below for CalcProteinHBonds() in CalcNucleicHBonds()
+		as well. Unlike the protein path, nucleic acid base-pair search
+		was already cross-chain by design (Watson-Crick pairing is
+		inherently between separate strands), so this half of the bug
+		was independently reachable on any sufficiently large multi-
+		chain nucleic acid structure, with no dependence on the inter-
+		chain protein work above. Same fix pattern: reject on the raw
+		per-axis difference against the fixed 5-Angstrom cutoff (1250
+		internal units) before squaring. Verified by A/B comparison on
+		4V5D (Thermus thermophilus 70S ribosome, 165 chains, 294,474
+		atoms): pre-fix 12,122 H-Bonds vs. post-fix 6,941 (-5,181 bogus
+		cross-structure base pairs eliminated); Helices/Strands/Turns
+		identical (331/663/1357) in both, as expected since those come
+		from the protein-only pipeline stages and are untouched by this
+		bug. Full regression suite (1mbn, 7dns, 1bmf, 7ahl, 3cro, 4v5d)
+		re-run clean after this fix plus the command.c fix above.
+
+[04/10/26]	molecule.h molecule.c
+		Enabled inter-chain hydrogen bond detection in
+		CalcProteinHBonds(), previously hard-restricted to "only
+		within a single chain" (chn2 forced equal to chn1, with a
+		cross-chain loop literally commented out in the original
+		source) - almost certainly an original 1995 performance
+		simplification, not a deliberate scientific choice: hydrogen
+		bonding is a purely spatial phenomenon with no dependence on
+		sequence/chain identity, and FindBetaSheets()'s TestLadder()
+		already searched across chains for a ladder partner, just
+		with no cross-chain H-bond data to ever find given the
+		restriction above. Restructured so CalcHydrogenBonds() builds
+		one shared spatial grid across every chain being processed
+		(rather than CalcProteinHBonds rebuilding a same-chain-only
+		grid per call), and the donor/acceptor search no longer
+		filters by chain; "offset" (used only for same-chain geometry
+		classification - helix/turn pitch) is forced to 0 for any
+		cross-chain pair, matching what the original's dead cross-
+		chain code already did. FindAlphaHelix/FindTurnStructure are
+		unaffected (they only ever walk within one chain regardless
+		of what's in the H-bond list), so this only changes beta-
+		sheet (strand) detection and the raw H-bond count/display.
+		Found and fixed a serious bug surfaced while validating this
+		on 8J07 (the 1546-chain, 3.1M-atom, ~960-Angstrom-spanning
+		structure from two sessions ago): the CA-CA distance pre-
+		filter computes dx*dx+dy*dy+dz*dz in Long (32-bit); for two
+		atoms more than ~185 Angstroms apart along a single axis, the
+		squared difference overflows and silently wraps to a small
+		number, which can slip under the MaxHDist cutoff entirely -
+		registering a bogus "hydrogen bond" between atoms that are
+		actually hundreds of Angstroms apart. This was always latent
+		but unreachable with the single-chain restriction (no one
+		protein chain spans 185 Angstroms); opening the search to
+		1546 chains across a 960-Angstrom structure hit it on
+		essentially every donor, observed first as Helices and
+		Strands both collapsing to exactly 0 on 8J07 (real same-chain
+		helical/ladder bonds getting bumped out of the kept-best-2-by-
+		energy slots by these bogus "nearby" cross-structure matches)
+		and independently as visibly absurd, enormously long "H-bond"
+		lines rendered across the whole structure. Fixed by rejecting
+		on the raw per-axis difference against the cutoff *before*
+		squaring (HGridCellSize is exactly sqrt(MaxHDist), so this is
+		an exact pre-filter, not an approximation) - cheap, and
+		cannot overflow regardless of structure size. Re-verified on
+		8J07 post-fix: 265,415 H-Bonds / 16,360 Helices / 15,472
+		Strands / 37,757 Turns (vs. 266,148/16,375/15,438/37,902 same-
+		chain-only - small, plausible shifts, not the pre-fix
+		755,374/0/0/36,366 collapse), in 24.7s total.
+		Validated on a second, independent, biologically meaningful
+		structure: 7AHL (alpha-hemolysin), whose heptameric
+		transmembrane pore is a textbook example of a beta-barrel
+		formed from strands contributed by seven separate chains -
+		exactly the case same-chain-restricted detection cannot
+		represent. A/B comparison on 7AHL: 193 Strands same-chain-only
+		vs 206 with inter-chain enabled (+13, all in the pore-forming
+		barrel), Helices unchanged at 26 in both (confirming
+		FindAlphaHelix's same-chain-only walk is correctly unaffected
+		either way). Small single/few-chain files (1mbn, 7dns, 1bmf)
+		remain byte-identical throughout all of the above, as
+		expected - none of them approach the 185-Angstrom overflow
+		threshold.
+
+[04/10/26]	molecule.h molecule.c
+		Fixed "cartoon"/"ribbons" being impractically slow (minutes,
+		sometimes never finishing) on very large multi-chain
+		structures (8J07: 1546 chains, 3.1M atoms), via two separate
+		O(n^2)-ish algorithms neither of which had ever been exercised
+		at this scale before:
+		 - CalcProteinHBonds() searched for a hydrogen-bonded partner
+		   by scanning every other residue in the chain, checking a
+		   CA-CA distance cutoff (MaxHDist, 9A) on each one. Replaced
+		   with a spatial hash grid (cell size == the cutoff, so any
+		   pair in range is guaranteed to land in the same or an
+		   immediately neighbouring cell - the standard cell-list
+		   technique): built fresh per chain from its own amino-acid
+		   alpha-carbons, queried instead of scanned. Turns an
+		   O(chain-length^2) search into O(chain-length). Caught and
+		   fixed a bug of my own along the way: two distinct
+		   neighbour cells can hash to the same bucket in a fixed-size
+		   table, and visiting a colliding bucket twice silently
+		   double-counted (and double-bonded) whatever lived in it;
+		   fixed by deduplicating the up-to-27 neighbour bucket
+		   indices before searching. Verified exact H-bond/Helix/
+		   Strand/Turn count parity against the un-optimised code on
+		   1mbn, 7dns and 1bmf before and after.
+		 - FindBetaSheets()'s TestLadder() helper searches for a beta-
+		   strand pairing partner by walking every residue in every
+		   chain *after* the current one in the database - completely
+		   independent of H-bond data, so the grid fix above didn't
+		   help it at all. Since a ladder partner must be hydrogen
+		   bonded (hence within the same distance cutoff), precompute
+		   each protein chain's alpha-carbon bounding box once per
+		   FindBetaSheets() call and skip any later chain whose
+		   cutoff-expanded bounding box can't possibly contain a
+		   partner, without changing TestLadder's internal residue
+		   walk at all (lower risk, given it's hand-tuned legacy code
+		   with pre-existing maybe-uninitialized warnings elsewhere in
+		   the same function). This was the dominant remaining cost:
+		   full "cartoon" on 8J07 (every one of the 1546 chains) now
+		   completes in 12.7s total (~7s of actual computation beyond
+		   the 5.4s load), versus needing to be killed before as it
+		   hadn't finished after several minutes. Verified exact
+		   Helix/Strand/Turn parity on 1mbn, 7dns and 1bmf (1bmf has
+		   real multi-chain structure, so this exercised the new
+		   cross-chain skip, not just a no-op).
+
+[04/10/26]	molecule.h
+		Widened Atom.serno and Group.serno from short (16-bit, max
+		32767) to Long (32-bit), after a user report of a visibly
+		wrong negative atom number ("Atom: C -15273") on the same
+		8J07 structure (3,146,111 atoms - PDB's own fixed-width
+		columns already overflow a 16-bit field, mmCIF just has no
+		ceiling at all to mask it). This was a latent bug in the
+		original 1995 code, only now actually reachable because
+		mmCIF removes the size limits PDB always had. Removed a
+		(short) truncating cast in the mmCIF atom-serial assignment
+		that would have silently reimposed the bug even after the
+		struct field was widened. Verified with a synthetic mmCIF
+		file using an atom id (3146111) and residue number (70000)
+		both deliberately beyond 32767: "select atomno=3146111" and
+		"select 70000" now each correctly select exactly one atom,
+		and "show sequence" prints the real residue number instead of
+		a wrapped negative one.
+
+[04/10/26]	molecule.h molecule.c infile.c abstree.h abstree.c command.c
+		render.c repres.c script.c transfor.c
+		Widened Chain.ident from a single char to a string (char
+		ident[MAXCHAINID], MAXCHAINID=8 in molecule.h), so the mmCIF
+		reader no longer has to truncate auth_asym_id to its first
+		character - previously chains "AA" and "AB" (common in large
+		complexes: cryo-EM assemblies, AlphaFold-Multimer, viral
+		capsids) silently collided into the same RasMol chain "A".
+		Added Chain.identval (Long), the first 4 characters packed
+		into one int, computed once in CreateChain(); this is what
+		the selection language's generic property-comparison engine
+		(EvaluateProperty's PropChain case) actually compares, since
+		that machinery only knows how to compare scalar ints for
+		every property (residue number, atom name, chain, ...) -
+		selecting by chain name beyond 4 characters just doesn't
+		disambiguate on the extra characters, which is not a
+		realistic limit for any real structure. Updated every call
+		site: the PDB and CHARMM loaders (which only ever produce
+		single character idents - added a ChainIdentIs() helper in
+		infile.c for their comparisons), the mmCIF loader (now uses
+		the full auth_asym_id/label_asym_id string), both places that
+		parse "chain" out of the selection language ("123:AB" in
+		command.c's ParseRange, and the PDB zone-string mini-grammar
+		"RES123:AB.ATOM" in abstree.c's ParsePrimitiveExpr - both now
+		consume a run of alnum characters instead of exactly one),
+		and every display/export path (FormatLabel's %c/%s, "show
+		sequence", PickAtom/DescribeAtom, the cartoon label-template
+		chooser in repres.c, MolScript/Kinemage export in script.c).
+		Two places are structurally stuck at one character regardless
+		and are left truncating to the first character, documented in
+		place: SavePDBMolecule (real PDB format's chain column is
+		physically one character) and the legacy, rarely used PDB
+		COLOR record mask-matching extension in transfor.c.
+		Caught and fixed a real bug surfaced while testing this:
+		ChainIdentValue()'s packing loop read name[i] independently
+		at each of the 4 positions instead of latching "ended" at the
+		first NUL, so uninitialized stack/heap bytes *after* a short
+		chain name's terminator could leak into the packed comparison
+		value. This silently broke "select X and :A"-style queries
+		(any selection combining a chain with anything else) for
+		ordinary single-character chains too, whenever the stale
+		memory differed between where the value was built and where
+		it was compared - a real, independently-discovered bug, not
+		specific to multi-character chains. Verified with a synthetic
+		3-chain ("A"/"AA"/"AB") mmCIF file: correct chain/atom counts,
+		no collisions, "select :AA", "select 1:AB", "select protein
+		and :A" and the zone-string form all distinguish chains
+		correctly, and the full PDB/mmCIF regression suite (1crn,
+		1mbn, 7dns, the AlphaFold P05067 prediction) is unchanged.
+
 [04/10/26]	sdlwin.c
 		Fixed a SIGSEGV when live-resizing the SDL window by dragging
 		an edge (reported as "always crashes on mouse-up when

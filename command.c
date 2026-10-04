@@ -1258,8 +1258,13 @@ static Expr *ParseRange( neg )
 
     ch = *TokenPtr;
     if( isalnum(ch) )
-    {   ch = ToUpper(ch);
-	TokenPtr++;
+    {   char chainbuf[MAXCHAINID];
+	register int i;
+
+	i = 0;
+	while( isalnum(*TokenPtr) && (i<MAXCHAINID-1) )
+	    chainbuf[i++] = ToUpper(*TokenPtr++);
+	chainbuf[i] = '\0';
 
 	tmp2 = AllocateNode();
 	tmp2->type = OpAnd;
@@ -1267,8 +1272,8 @@ static Expr *ParseRange( neg )
 
 	tmp1 = AllocateNode();
 	tmp1->type = OpEqual | OpLftProp | OpRgtVal;
-	tmp1->lft.val = PropChain;               
-	tmp1->rgt.val = ch;
+	tmp1->lft.val = PropChain;
+	tmp1->rgt.val = ChainIdentValue(chainbuf);
 
 	tmp2->lft.ptr = tmp1;
 	tmp1 = tmp2;
@@ -1334,16 +1339,13 @@ static Expr *ParseExpression( level )
 	 case(2): /* Primitives */
 		  if( IsPredTok(CurToken) || (CurToken==BackboneTok) )
 		  {   switch( CurToken )
-		      {   case(HelixTok):    if( InfoHelixCount<0 )
-						 DetermineStructure(False);
+		      {   case(HelixTok):    DetermineStructure(False,True);
 					     pred = PredHelix;
 					     break;
-			  case(SheetTok):    if( InfoLadderCount<0 )
-						 DetermineStructure(False);
+			  case(SheetTok):    DetermineStructure(False,True);
 					     pred = PredSheet;
 					     break;
-			  case(TurnTok):     if( InfoTurnCount<0 )
-						 DetermineStructure(False);
+			  case(TurnTok):     DetermineStructure(False,True);
 					     pred = PredTurn;
 					     break;
 			  case(CystineTok):  if( InfoSSBondCount<0 )
@@ -2177,7 +2179,7 @@ static void ExecuteShowCommand()
 			if( grp->alist && !(grp->alist->flag&HeteroFlag) )
 			{   if( !chain )
 			    {   WriteString("Chain ");
-				WriteChar(chn->ident);
+				WriteString(chn->ident);
 				WriteString(":\n");
 				chain = True;
 			    }
@@ -3210,10 +3212,18 @@ int ExecuteCommand()
 
 	case(StructureTok):
                           FetchToken();
+                          /* Unlike the lazy cartoon/ribbons/etc paths,
+                           * "structure" is an explicit request to
+                           * recalculate - force it regardless of any
+                           * cached (or PDB HELIX/SHEET record based)
+                           * InfoHelixCount, matching the original
+                           * command's always-recompute behaviour.
+                           */
+                          InfoHelixCount = -1;
                           if( !CurToken || (CurToken==FalseTok) )
-			  {   DetermineStructure(False);
+			  {   DetermineStructure(False,True);
                           } else if( CurToken==TrueTok )
-                          {   DetermineStructure(True);
+                          {   DetermineStructure(True,True);
                           } else CommandError(ErrorMsg[ErrSyntax]);
 			  break;
 

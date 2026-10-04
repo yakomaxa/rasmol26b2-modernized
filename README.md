@@ -43,6 +43,11 @@ list and supported-platform history are preserved verbatim in
   same internal representation the PDB parser produces, so CIF-loaded
   structures get the same backbone tracing, cartoons and element
   colouring as PDB ones.
+- **Multi-character chain identifiers**: `Chain.ident` is a string
+  (not a single `char`) throughout the codebase, so chains like `AA`/
+  `AB` — common in large complexes — load, display and select
+  (`select :AA`) correctly instead of silently colliding into the
+  same single-letter chain.
 - **Format auto-detection**: a bare `load foo.cif` or `rasmol foo.cif`
   now correctly picks the mmCIF reader from the `.cif`/`.mmcif`
   extension. Previously (and this bit without the fix) it silently fed
@@ -111,9 +116,13 @@ See `doc/rasmol.txt` / `rasmol.hlp` for the full command language.
 
 ### Known mmCIF reader limitations
 
-- Chain identifiers are truncated to one character — `Chain.ident` is
-  a plain `char` throughout the whole codebase, a PDB-era limitation
-  this fork hasn't lifted.
+- Chain identifiers support multi-character names (`AA`, `AB`, ... —
+  common in large complexes) in loading, display, and selection
+  (`select :AA`). Selecting *by name* only disambiguates on the first
+  4 characters, and two structurally PDB-format-bound paths — writing
+  real PDB output, and the legacy PDB `COLOR` record extension — are
+  stuck at one character, since that's a hard limit of those specific
+  formats, not of RasMol's internal representation.
 - No `_struct_conf` (HELIX/SHEET) parsing yet, so secondary structure
   reads as "No Assignment" until you ask RasMol to calculate it.
 - Multi-model mmCIF files load only the first `pdbx_PDB_model_num`.

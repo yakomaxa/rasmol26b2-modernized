@@ -9,6 +9,19 @@
 #define MAXRES  100
 #define MINRES  52
 
+/* Above this many atoms, H-bond/secondary-structure determination for
+ * non-"full" requests (cartoons, ribbons, hbond display, ...) is
+ * scoped to chains with at least one selected atom, recomputed fresh
+ * on every call, instead of unconditionally covering - and forever
+ * caching - every chain in the database. Below this size, behaviour
+ * is unchanged from the original always-full, compute-once semantics;
+ * this only engages for the kind of huge cryo-EM assemblies RasMol
+ * never saw in 1995 (a 1546-chain, 3M-atom structure takes long
+ * enough with the per-chain O(n^2) search that scanning every chain
+ * on every "cartoon" of a single selected chain is impractical).
+ */
+#define HBondScopeThreshold 100000
+
 
 #define IsAmino(x)       ((x)<=23)
 #define IsAminoNucleo(x) ((x)<=42)
@@ -102,7 +115,7 @@ typedef struct _Atom {
         Long   xorg, yorg, zorg;          /* World Co-ordinates    */
         short  x, y, z;                   /* Image Co-ordinates    */
         short  radius;                    /* World Radius          */
-        short  serno;                     /* Atom Serial Number    */
+        Long   serno;                     /* Atom Serial Number    */
         short  temp;                      /* Temperature Factor    */
         short  col;                       /* Atom Colour           */
         void   *label;                    /* Atom Label Structure  */
@@ -128,7 +141,7 @@ typedef struct _Bond {
 typedef struct _Group {
         struct _Group __far *gnext;       /* Linked list of groups */
         Atom __far *alist;                /* Linked list of atoms  */
-        short serno;                      /* Group serial number   */
+        Long  serno;                      /* Group serial number   */
         short width;                      /* Ribbon Width          */
         short col1;			  /* Ribbon Colour #1      */
         short col2;			  /* Ribbon Colour #2      */
@@ -143,12 +156,19 @@ typedef struct _Group {
 #define Chain ChainSeg
 #endif
 
+#define MAXCHAINID 8
+
 typedef struct _ChainSeg {
         struct _ChainSeg __far *cnext;    /* Linked list of chains     */
         Group __far *glist;               /* Linked list of groups     */
         Bond __far *blist;                /* Linked list of back bonds */
-        char ident;                       /* Chain identifier          */
+        char ident[MAXCHAINID];           /* Chain identifier (string) */
+        Long identval;                    /* First 4 chars of ident,   */
+                                           /* packed; for fast compare */
         Byte model;                       /* NMR Model / Symmetry      */
+        Long bbMinX,bbMaxX;                /* Alpha-carbon bounding box */
+        Long bbMinY,bbMaxY;                /* (FindBetaSheets()'s       */
+        Long bbMinZ,bbMaxZ;                /* cross-chain skip filter)  */
 	} Chain;
 
 typedef struct _AtomRef {
@@ -393,7 +413,7 @@ extern int MaskCount;
 extern int NMRModel;
 
 #ifdef FUNCPROTO
-void CreateChain( int );
+void CreateChain( char* );
 void CreateGroup( int );
 void ProcessGroup( int );
 void CreateMolGroup();
@@ -412,14 +432,14 @@ void CreateBond( int, int, int );
 void CreateBondOrder( int, int );
 void CreateMoleculeBonds( int, int );
 void FindDisulphideBridges();
-void CalcHydrogenBonds();
+void CalcHydrogenBonds( int );
 
 void InitInternalCoords();
 IntCoord __far* AllocInternalCoord();
 int ConvertInternal2Cartesian();
 void FreeInternalCoords();
 
-void DetermineStructure( int );
+void DetermineStructure( int, int );
 void RenumberMolecule( int );
 
 void InitialiseDatabase();

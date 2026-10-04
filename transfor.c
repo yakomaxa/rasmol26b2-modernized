@@ -461,8 +461,8 @@ void SetHBondStatus( hbonds, enable, rad )
 	return;
 
     if( hbonds )
-    {   if( enable && (InfoHBondCount<0) )
-	    CalcHydrogenBonds();
+    {   if( enable )
+	    CalcHydrogenBonds(False);
 	list = Database->hlist;
     } else 
     {   if( enable && (InfoSSBondCount<0) )
@@ -503,8 +503,7 @@ void SetRibbonStatus( enable, flag, width )
     if( !enable && !DrawRibbon )
 	return;
 
-    if( InfoHelixCount<0 )
-	DetermineStructure(False);
+    DetermineStructure(False,False);
 
     DrawRibbon = False;
     for( chain=Database->clist; chain; chain=chain->cnext )
@@ -562,8 +561,7 @@ void SetRibbonCartoons()
     if( !Database )
 	return;
 
-    if( InfoHelixCount<0 )
-	DetermineStructure(False);
+    DetermineStructure(False,False);
 
     /* DrawBetaArrows = True; */
     /* CartoonHeight = 120;   */
@@ -637,8 +635,7 @@ void SetTraceTemperature()
     if( !(flag&SelectFlag) )
         return;
 
-    if( InfoHelixCount<0 )
-	DetermineStructure(False);
+    DetermineStructure(False,False);
 
     if( max != min )
     {   coeff = 200.0/(max-min);
@@ -1267,8 +1264,8 @@ void ColourHBondType()
     for( i=0; i<7; i++ )
         HBondShade[i].col = 0;
 
-    if( InfoHBondCount<0 )
-    {   CalcHydrogenBonds();
+    if( (InfoHBondCount<0) || ((MainAtomCount+HetaAtomCount)>HBondScopeThreshold) )
+    {   CalcHydrogenBonds(False);
     } else ColourHBondNone( True );
 
     for( ptr=Database->hlist; ptr; ptr=ptr->hnext )
@@ -1304,8 +1301,8 @@ void ColourHBondAttrib( hbonds, r, g, b )
         return;
 
     if( hbonds )
-    {   if( InfoHBondCount<0 )
-        {   CalcHydrogenBonds();
+    {   if( (InfoHBondCount<0) || ((MainAtomCount+HetaAtomCount)>HBondScopeThreshold) )
+        {   CalcHydrogenBonds(False);
         } else ColourHBondNone(True);
     } else
         if( InfoSSBondCount<0 )
@@ -1366,9 +1363,9 @@ void ColourRibbonAttrib( flag, r, g, b )
     register Atom __far *aptr;
 
     if( Database )
-    {   if( InfoHelixCount >= 0 )
+    {   if( (InfoHelixCount>=0) && ((MainAtomCount+HetaAtomCount)<=HBondScopeThreshold) )
         {   ColourRibbonNone( flag );
-        } else DetermineStructure(False);
+        } else DetermineStructure(False,False);
 
         shade = DefineShade((Byte)r,(Byte)g,(Byte)b);
         col = Shade2Colour(shade);
@@ -1794,7 +1791,8 @@ void UserMaskAttrib( fields )
 	    temp = mptr->mask;
 	    match = True;
 
-	    if( !MatchChar(temp[13],chain->ident) ) match=False;
+	    /* Legacy COLOR record mask: chain field is one character */
+	    if( !MatchChar(temp[13],chain->ident[0]) ) match=False;
 	    if( !MatchChar(temp[9],ptr->altl) )     match=False;
 
 	    /* Atom Name */
@@ -1972,8 +1970,7 @@ void StructColourAttrib()
     if( !Database )
 	return;
 
-    if( InfoHelixCount<0 )
-	DetermineStructure(False);
+    DetermineStructure(False,False);
 
     for( i=0; i<4; i++ )
 	StructShade[i].col = 0;

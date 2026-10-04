@@ -264,6 +264,7 @@ int ElemVDWRadius( int );
 int ParsePrimitiveExpr( char** );
 int GetElemNumber( Group __far*, Atom __far* );
 void FormatLabel( Chain __far*, Group __far*, Atom __far*, char*, char* );
+Long ChainIdentValue( char* );
 void InitialiseAbstree();
 void ResetSymbolTable();
 
@@ -285,6 +286,7 @@ int ElemVDWRadius();
 int ParsePrimitiveExpr();
 int GetElemNumber();
 void FormatLabel();
+Long ChainIdentValue();
 void InitialiseAbstree();
 void ResetSymbolTable();
 

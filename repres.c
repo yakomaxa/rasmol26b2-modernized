@@ -219,7 +219,7 @@ void DefaultLabels( enable )
             {   if( aptr->flag & SelectFlag )
                 {   if( enable )
                     {   if( InfoChainCount > 1 )
-                        {   if( isdigit(chain->ident) )
+                        {   if( chain->ident[1] || isdigit(chain->ident[0]) )
                             {   if( !label1 )
                                     label1 = CreateLabel("%n%r:%c",7);
                                 aptr->label = label1;

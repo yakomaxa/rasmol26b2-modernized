@@ -224,14 +224,27 @@ static FeatEntry __far *AllocFeature()
 }
 
 
+/* True if chain's identifier is exactly the single raw PDB column
+ * character ch. Fixed-column PDB records (ATOM/HETATM/HELIX/SHEET/
+ * TURN/TER) only ever create or reference single character chain
+ * identifiers, so this is the only comparison those code paths need,
+ * even though Chain.ident is a general string.
+ */
+static int ChainIdentIs( chain, ch )
+    Chain __far *chain;  int ch;
+{
+    return( (chain->ident[0]==ch) && !chain->ident[1] );
+}
+
+
 static void UpdateFeature( ptr, mask )
     FeatEntry __far *ptr;  int mask;
 {
     register Chain __far *chain;
     register Group __far *group;
- 
+
     for( chain=Database->clist; chain; chain=chain->cnext )
-        if( chain->ident == ptr->chain )
+        if( ChainIdentIs(chain,ptr->chain) )
         {   group=chain->glist;
             while( group && (group->serno<ptr->init) )
                 group = group->gnext;
@@ -318,9 +331,13 @@ static Long ReadPDBCoord( offset )
 static void ProcessPDBGroup( heta, serno )
     int heta, serno;
 {
+    char buf[2];
+
     PDBInsert = Record[26];
-    if( !CurChain || (CurChain->ident!=Record[21]) )
-        CreateChain( Record[21] );
+    if( !CurChain || !ChainIdentIs(CurChain,Record[21]) )
+    {   buf[0] = Record[21];  buf[1] = '\0';
+        CreateChain( buf );
+    }
     CreateGroup( GroupPool );
  
     CurGroup->refno = FindResNo( Record+17 );
@@ -383,7 +400,7 @@ static void ProcessPDBAtom( heta )
  
     serno = (int)ReadValue(22,4);
     if( !CurGroup || (CurGroup->serno!=serno)
-        || (CurChain->ident!=Record[21])
+        || !ChainIdentIs(CurChain,Record[21])
         || (PDBInsert!=Record[26]) )
         ProcessPDBGroup( heta, serno );
  
@@ -985,9 +1002,11 @@ int LoadCharmmMolecule( fp )
     {   FetchRecord();
  
         if( !CurChain || strncmp(Record+51,buffer,4) )
-        {   for( i=0; i<4; i++ )
+        {   char segchain[2];
+            for( i=0; i<4; i++ )
                 buffer[i] = Record[51+i];
-            CreateChain(chain+49);
+            segchain[0] = (char)(chain+49);  segchain[1] = '\0';
+            CreateChain(segchain);
             chain++;
         }
 
@@ -1661,8 +1680,8 @@ static void ProcessCIFAtom( rowVal, col )
     register Long dx, dy, dz;
     register int heta, serno;
     char *compVal, *asymVal, *seqVal, *atomVal, *insVal, *altVal, *typeVal;
-    char name3[4], name4[4];
-    int chainId, insCode;
+    char name3[4], name4[4], chainBuf[MAXCHAINID];
+    int insCode, k;
 
     heta = (col[ACOL_GROUP]>=0) &&
            !CIFEqualN(rowVal[col[ACOL_GROUP]],"ATOM",4);
@@ -1683,17 +1702,22 @@ static void ProcessCIFAtom( rowVal, col )
     altVal  = (col[ACOL_ALT]>=0)?  rowVal[col[ACOL_ALT]]  : ".";
     typeVal = (col[ACOL_TYPE]>=0)? rowVal[col[ACOL_TYPE]] : "";
 
-    chainId = (*asymVal && (*asymVal!='.') && (*asymVal!='?'))?
-              ToUpper(*asymVal) : ' ';
+    if( *asymVal && (*asymVal!='.') && (*asymVal!='?') )
+    {   for( k=0; asymVal[k] && (k<MAXCHAINID-1); k++ )
+            chainBuf[k] = ToUpper(asymVal[k]);
+        chainBuf[k] = '\0';
+    } else
+    {   chainBuf[0] = ' ';  chainBuf[1] = '\0'; }
+
     insCode = (*insVal && (*insVal!='.') && (*insVal!='?'))?
               *insVal : ' ';
     serno = atoi(seqVal);
 
     if( !CurGroup || (CurGroup->serno!=serno) ||
-        (CurChain->ident!=chainId) || (CIFInsert!=insCode) )
+        strcmp(CurChain->ident,chainBuf) || (CIFInsert!=insCode) )
     {   CIFInsert = (char)insCode;
-        if( !CurChain || (CurChain->ident!=chainId) )
-            CreateChain( chainId );
+        if( !CurChain || strcmp(CurChain->ident,chainBuf) )
+            CreateChain( chainBuf );
         CreateGroup( GroupPool );
 
         NormalizeResidueName( compVal, name3 );
@@ -1706,7 +1730,7 @@ static void ProcessCIFAtom( rowVal, col )
 
     FormatCIFAtomName( atomVal, typeVal, name4 );
     ptr->refno = ComplexAtomType( name4 );
-    ptr->serno = (short)((col[ACOL_ID]>=0)? atoi(rowVal[col[ACOL_ID]]) : 0);
+    ptr->serno = (col[ACOL_ID]>=0)? atoi(rowVal[col[ACOL_ID]]) : 0;
     ptr->temp  = (short)((col[ACOL_TEMP]>=0)?
                           (int)(100.0*atof(rowVal[col[ACOL_TEMP]])) : 0);
     ptr->altl  = (*altVal && (*altVal!='.') && (*altVal!='?'))?
@@ -1964,16 +1988,20 @@ int SavePDBMolecule( filename )
     count = 1;
     ForEachAtom
         if( aptr->flag&SelectFlag )
-        {   if( prev && (chain->ident!=ch) )
+        {   /* PDB's chain column is a single character; this is the
+             * best any PDB writer can do for a chain whose real
+             * (mmCIF) identifier is longer than one character.
+             */
+            if( prev && (chain->ident[0]!=ch) )
                 fprintf( DataFile, "TER   %5d      %.3s %c%4d \n",
                          count++, Residue[prev->refno], ch, prev->serno);
- 
+
             if( aptr->flag&HeteroFlag )
             {      fputs("HETATM",DataFile);
             } else fputs("ATOM  ",DataFile);
             fprintf( DataFile, "%5d %.4s %.3s %c%4d    ",
                      count++, ElemDesc[aptr->refno], Residue[group->refno],
-                     chain->ident, group->serno );
+                     chain->ident[0], group->serno );
  
             x = (double)aptr->xorg/250.0;
             y = (double)aptr->yorg/250.0;
@@ -1986,7 +2014,7 @@ int SavePDBMolecule( filename )
 #endif
             fprintf(DataFile,"  1.00%6.2f\n",aptr->temp/100.0);
  
-            ch = chain->ident;
+            ch = chain->ident[0];
             prev = group;
         }
  

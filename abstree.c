@@ -244,6 +244,30 @@ void DeAllocateExpr( expr )
 }
 
 
+/* Pack the first 4 characters of a chain identifier into a single
+ * value, for the selection language's generic property-comparison
+ * machinery (EvaluateProperty/PropChain), which only knows how to
+ * compare scalar ints. Chain names are matched/displayed in full
+ * everywhere else (Chain.ident); only selection by name is limited
+ * to disambiguating on the first 4 characters.
+ */
+Long ChainIdentValue( name )
+    char *name;
+{
+    register Long val;
+    register int i;
+    register int ended;
+
+    val = 0;
+    ended = False;
+    for( i=0; i<4; i++ )
+    {   if( !name[i] ) ended = True;
+        val = (val<<8) | (ended? 0 : (Byte)ToUpper(name[i]));
+    }
+    return( val );
+}
+
+
 int GetElemNumber( group, aptr )
     Group __far *group;
     Atom __far *aptr;
@@ -497,7 +521,7 @@ static int EvaluateProperty( prop )
         case( PropName ):     return( QAtom->refno );
         case( PropResId ):    return( QGroup->serno );
         case( PropResName ):  return( QGroup->refno );
-        case( PropChain ):    return( QChain->ident );
+        case( PropChain ):    return( QChain->identval );
         case( PropSelect ):   return( QAtom->flag&SelectFlag );
         case( PropElemNo ):   return( QAtom->elemno );
         case( PropModel ):    return( QChain->model );
@@ -904,12 +928,19 @@ int ParsePrimitiveExpr( orig )
         ch = *ptr++;
 
     if( isalnum(ch) )
-    {   ch = ToUpper(ch);
+    {   char chainbuf[MAXCHAINID];
+
+        i = 0;
+        while( isalnum(ch) && (i<MAXCHAINID-1) )
+        {   chainbuf[i++] = ToUpper(ch);
+            ch = *ptr++;
+        }
+        chainbuf[i] = '\0';
 
         tmp1 = AllocateNode();
         tmp1->type = OpEqual | OpLftProp | OpRgtVal;
         tmp1->lft.val = PropChain;
-        tmp1->rgt.val = ch;
+        tmp1->rgt.val = ChainIdentValue(chainbuf);
         if( QueryExpr != &TrueExpr )
         {   tmp2 = AllocateNode();
             tmp2->type = OpAnd;
@@ -917,7 +948,6 @@ int ParsePrimitiveExpr( orig )
             tmp2->lft.ptr = tmp1;
             QueryExpr = tmp2;
         } else QueryExpr = tmp1;
-        ch = *ptr++;
     } else if( (ch=='?') || (ch=='%') || (ch=='*') )
         ch = *ptr++;
 
@@ -1047,7 +1077,8 @@ void FormatLabel( chain, group, aptr, label, ptr )
                            break;
 
                case('c'):  /* Chain Identifier */
-               case('s'):  *ptr++ = chain->ident;
+               case('s'):  for( j=0; chain->ident[j]; j++ )
+                               *ptr++ = chain->ident[j];
                            break;
 
                case('e'):  /* Element Type */
