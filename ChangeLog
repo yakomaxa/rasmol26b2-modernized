@@ -1,3 +1,23 @@
+[04/10/26]	transfor.c
+		Fixed SetRibbonStatus() (backs cartoon/ribbons/strands/trace
+		on AND off) calling DetermineStructure(False,False)
+		unconditionally, including on the *disable* path, even though
+		the disable branch only ever reads/writes DrawKnotFlag and
+		never looks at group->struc. On a large structure in "scoped"
+		mode (> HBondScopeThreshold atoms) this meant every single
+		"cartoon off" was paying for a full H-bond/helix/strand/turn
+		recompute it had no use for, since scoped mode cannot cache
+		across calls (selection can change on every call, so it
+		always redoes the work - see the two entries below). Fixed by
+		only calling DetermineStructure() on the enable path. Verified
+		on 8J07 (1546 chains, 3.1M atoms, scoped mode): "cartoon on"/
+		"cartoon off"/"cartoon on" now shows "Please wait..." and
+		recomputes only on the two enables, not the disable in
+		between, with both enables still producing identical results
+		(265,415 H-Bonds/16,360 Helices/15,472 Strands/37,757 Turns).
+		Full regression suite (1mbn, 7dns, 1bmf, 7ahl, 3cro, 4v5d)
+		re-run byte-identical to pre-change output.
+
 [04/10/26]	command.c
 		Fixed the "structure" command silently doing nothing on
 		files whose secondary structure was already assigned (either
