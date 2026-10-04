@@ -1,3 +1,105 @@
+[04/10/26]	command.c
+		Fixed the "structure" command silently doing nothing on
+		files whose secondary structure was already assigned (either
+		by a prior cartoon/ribbons render, or by the PDB's own
+		HELIX/SHEET records at load time). The lazy-recompute gate
+		added for cartoon/ribbons et al (skip recalculating if
+		InfoHelixCount is already set) was accidentally also guarding
+		the StructureTok handler, which in the original 1995 code
+		always force-recomputed unconditionally - "structure" is an
+		explicit user request to (re)run DSSP-style assignment, not a
+		rendering path that can tolerate a stale cache. Fixed by
+		resetting InfoHelixCount = -1 immediately before the
+		DetermineStructure() calls in this one handler, leaving the
+		lazy-cache behaviour untouched everywhere else. Found while
+		testing the nucleic-acid overflow fix below on data/3cro.pdb,
+		whose own PDB HELIX records pre-populate InfoHelixCount before
+		any script command runs - "structure true" now correctly
+		recomputes (130 H-Bonds, 0 Helices, 0 Strands, 22 Turns; the 0
+		Helices is DSSP-style geometric recomputation legitimately
+		disagreeing with the PDB author's annotation, not a bug).
+
+[04/10/26]	molecule.c
+		Fixed the same Long (32-bit) distance-squared overflow bug
+		documented below for CalcProteinHBonds() in CalcNucleicHBonds()
+		as well. Unlike the protein path, nucleic acid base-pair search
+		was already cross-chain by design (Watson-Crick pairing is
+		inherently between separate strands), so this half of the bug
+		was independently reachable on any sufficiently large multi-
+		chain nucleic acid structure, with no dependence on the inter-
+		chain protein work above. Same fix pattern: reject on the raw
+		per-axis difference against the fixed 5-Angstrom cutoff (1250
+		internal units) before squaring. Verified by A/B comparison on
+		4V5D (Thermus thermophilus 70S ribosome, 165 chains, 294,474
+		atoms): pre-fix 12,122 H-Bonds vs. post-fix 6,941 (-5,181 bogus
+		cross-structure base pairs eliminated); Helices/Strands/Turns
+		identical (331/663/1357) in both, as expected since those come
+		from the protein-only pipeline stages and are untouched by this
+		bug. Full regression suite (1mbn, 7dns, 1bmf, 7ahl, 3cro, 4v5d)
+		re-run clean after this fix plus the command.c fix above.
+
+[04/10/26]	molecule.h molecule.c
+		Enabled inter-chain hydrogen bond detection in
+		CalcProteinHBonds(), previously hard-restricted to "only
+		within a single chain" (chn2 forced equal to chn1, with a
+		cross-chain loop literally commented out in the original
+		source) - almost certainly an original 1995 performance
+		simplification, not a deliberate scientific choice: hydrogen
+		bonding is a purely spatial phenomenon with no dependence on
+		sequence/chain identity, and FindBetaSheets()'s TestLadder()
+		already searched across chains for a ladder partner, just
+		with no cross-chain H-bond data to ever find given the
+		restriction above. Restructured so CalcHydrogenBonds() builds
+		one shared spatial grid across every chain being processed
+		(rather than CalcProteinHBonds rebuilding a same-chain-only
+		grid per call), and the donor/acceptor search no longer
+		filters by chain; "offset" (used only for same-chain geometry
+		classification - helix/turn pitch) is forced to 0 for any
+		cross-chain pair, matching what the original's dead cross-
+		chain code already did. FindAlphaHelix/FindTurnStructure are
+		unaffected (they only ever walk within one chain regardless
+		of what's in the H-bond list), so this only changes beta-
+		sheet (strand) detection and the raw H-bond count/display.
+		Found and fixed a serious bug surfaced while validating this
+		on 8J07 (the 1546-chain, 3.1M-atom, ~960-Angstrom-spanning
+		structure from two sessions ago): the CA-CA distance pre-
+		filter computes dx*dx+dy*dy+dz*dz in Long (32-bit); for two
+		atoms more than ~185 Angstroms apart along a single axis, the
+		squared difference overflows and silently wraps to a small
+		number, which can slip under the MaxHDist cutoff entirely -
+		registering a bogus "hydrogen bond" between atoms that are
+		actually hundreds of Angstroms apart. This was always latent
+		but unreachable with the single-chain restriction (no one
+		protein chain spans 185 Angstroms); opening the search to
+		1546 chains across a 960-Angstrom structure hit it on
+		essentially every donor, observed first as Helices and
+		Strands both collapsing to exactly 0 on 8J07 (real same-chain
+		helical/ladder bonds getting bumped out of the kept-best-2-by-
+		energy slots by these bogus "nearby" cross-structure matches)
+		and independently as visibly absurd, enormously long "H-bond"
+		lines rendered across the whole structure. Fixed by rejecting
+		on the raw per-axis difference against the cutoff *before*
+		squaring (HGridCellSize is exactly sqrt(MaxHDist), so this is
+		an exact pre-filter, not an approximation) - cheap, and
+		cannot overflow regardless of structure size. Re-verified on
+		8J07 post-fix: 265,415 H-Bonds / 16,360 Helices / 15,472
+		Strands / 37,757 Turns (vs. 266,148/16,375/15,438/37,902 same-
+		chain-only - small, plausible shifts, not the pre-fix
+		755,374/0/0/36,366 collapse), in 24.7s total.
+		Validated on a second, independent, biologically meaningful
+		structure: 7AHL (alpha-hemolysin), whose heptameric
+		transmembrane pore is a textbook example of a beta-barrel
+		formed from strands contributed by seven separate chains -
+		exactly the case same-chain-restricted detection cannot
+		represent. A/B comparison on 7AHL: 193 Strands same-chain-only
+		vs 206 with inter-chain enabled (+13, all in the pore-forming
+		barrel), Helices unchanged at 26 in both (confirming
+		FindAlphaHelix's same-chain-only walk is correctly unaffected
+		either way). Small single/few-chain files (1mbn, 7dns, 1bmf)
+		remain byte-identical throughout all of the above, as
+		expected - none of them approach the 185-Angstrom overflow
+		threshold.
+
 [04/10/26]	molecule.h molecule.c
 		Fixed "cartoon"/"ribbons" being impractically slow (minutes,
 		sometimes never finishing) on very large multi-chain

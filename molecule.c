@@ -1384,6 +1384,7 @@ typedef struct _HGridEntry {
     struct _HGridEntry *next;
     Atom __far *ca;
     Group __far *group;
+    Chain __far *chain;
     int pos;
     } HGridEntry;
 
@@ -1416,8 +1417,8 @@ static unsigned int HGridHash( cx, cy, cz )
 }
 
 
-static void HGridInsert( ca, group, pos )
-    Atom __far *ca;  Group __far *group;  int pos;
+static void HGridInsert( ca, group, chain, pos )
+    Atom __far *ca;  Group __far *group;  Chain __far *chain;  int pos;
 {
     register HGridEntry *entry;
     register unsigned int h;
@@ -1427,6 +1428,7 @@ static void HGridInsert( ca, group, pos )
 
     entry->ca = ca;
     entry->group = group;
+    entry->chain = chain;
     entry->pos = pos;
 
     h = HGridHash( HGridCell(ca->xorg), HGridCell(ca->yorg),
@@ -1471,16 +1473,17 @@ static void CalcProteinHBonds( chn1 )
     unsigned int buckets[27], h;
     int nbuckets, k, dup;
 
-    /* Only Hydrogen Bond within a single chain! Build the candidate
-     * (acceptor) grid from just this chain's own amino-acid CAs.
+    /* The candidate (acceptor) grid is built once, across every chain
+     * being processed this pass, by CalcHydrogenBonds() - hydrogen
+     * bonds, unlike sequence-local secondary structure, are a purely
+     * spatial phenomenon and commonly do form between chains (e.g.
+     * inter-chain beta sheets), so there's no reason to exclude them
+     * now that neighbour search no longer requires an exhaustive
+     * per-chain scan. offset (used only for same-chain geometry
+     * classification: helix/turn pitch) is forced to 0 for any
+     * candidate from a different chain, same as the dead cross-chain
+     * code this is reviving originally intended.
      */
-    pos1 = 0;
-    for( group2=chn1->glist; group2; group2=group2->gnext )
-    {   pos1++;
-        if( IsAmino(group2->refno) && (ca2=FindGroupAtom(group2,1)) )
-            HGridInsert( ca2, group2, pos1 );
-    }
-
     pos1 = 0;
     pc1 = po1 = (void __far*)0;
     for(group1=chn1->glist;group1;group1=group1->gnext)
@@ -1542,20 +1545,36 @@ static void CalcProteinHBonds( chn1 )
 		if( (group2==group1) || (group2->gnext==group1) )
 		    continue;
 
+		/* Reject on the raw (unsquared) per-axis difference first -
+		 * cheap, and necessary to avoid overflowing Long (32-bit)
+		 * when squaring: two atoms from opposite ends of a large
+		 * (hundreds of Angstrom) structure can have a coordinate
+		 * difference whose square overflows and wraps to a small
+		 * number, which would otherwise slip under MaxHDist and
+		 * register as a bogus, enormously long "hydrogen bond".
+		 * HGridCellSize == sqrt(MaxHDist), so this is an exact,
+		 * not just approximate, pre-filter.
+		 */
 		dx = (int)(ca1->xorg-ca2->xorg);
+		if( (dx>HGridCellSize) || (dx<-HGridCellSize) )
+		    continue;
 		if( (dist=(Long)dx*dx) > MaxHDist )
 		    continue;
 
 		dy = (int)(ca1->yorg-ca2->yorg);
+		if( (dy>HGridCellSize) || (dy<-HGridCellSize) )
+		    continue;
 		if( (dist+=(Long)dy*dy) > MaxHDist )
 		    continue;
 
 		dz = (int)(ca1->zorg-ca2->zorg);
+		if( (dz>HGridCellSize) || (dz<-HGridCellSize) )
+		    continue;
 		if( (dist+=(Long)dz*dz) > MaxHDist )
 		    continue;
 
 		if( (energy = CalculateBondEnergy(group2)) )
-		{   offset = pos1 - entry->pos;
+		{   offset = (entry->chain==chn1)? (pos1 - entry->pos) : 0;
 
 		    if( energy<res1 )
 		    {   best2CA = best1CA;  best1CA = ca2;
@@ -1577,8 +1596,6 @@ static void CalcProteinHBonds( chn1 )
 	    CreateHydrogenBond(ca1,best1CA,n1,best1,res1,off1);
 	}
     }
-
-    HGridClear();
 }
 
 
@@ -1620,15 +1637,32 @@ static void CalcNucleicHBonds( chn1 )
 		    if( !(ca1=FindGroupAtom(group2,23)) )
 			continue;
 
+		    /* Reject on the raw per-axis difference against
+		     * the fixed 5A cutoff before squaring - same
+		     * Long (32-bit) overflow risk as the protein
+		     * path: two atoms over ~185A apart would
+		     * otherwise have dx*dx wrap to a small number
+		     * and slip under max. This search is already
+		     * cross-chain by design (base pairing is between
+		     * separate strands), so any sufficiently large
+		     * multi-chain nucleic acid structure could hit
+		     * this, independently of the protein-side bug.
+		     */
 		    dx = (int)(ca1->xorg - n1->xorg);
-		    if( (dist=(Long)dx*dx) >= max ) 
+		    if( (dx>1250) || (dx<-1250) )
+			continue;
+		    if( (dist=(Long)dx*dx) >= max )
 			continue;
 
 		    dy = (int)(ca1->yorg - n1->yorg);
-		    if( (dist+=(Long)dy*dy) >= max ) 
+		    if( (dy>1250) || (dy<-1250) )
+			continue;
+		    if( (dist+=(Long)dy*dy) >= max )
 			continue;
 
 		    dz = (int)(ca1->zorg - n1->zorg);
+		    if( (dz>1250) || (dz<-1250) )
+			continue;
 		    if( (dist+=(Long)dz*dz) >= max )
 			continue;
 
@@ -1684,7 +1718,10 @@ void CalcHydrogenBonds( full )
     int full;
 {
     register Chain __far *chn1;
+    register Group __far *group1;
+    register Atom __far *ca1;
     register int scoped;
+    register int pos1;
     char buffer[40];
 
     if( !Database ) return;
@@ -1710,6 +1747,23 @@ void CalcHydrogenBonds( full )
 	CommandActive=True;
     }
 
+    /* Build one shared acceptor grid, across every protein chain being
+     * processed this pass, so CalcProteinHBonds() can find hydrogen
+     * bonds between chains as well as within one - hydrogen bonding
+     * is a spatial phenomenon, not a sequence-local one, and nothing
+     * about the grid makes same-chain-only cheaper than any-chain.
+     */
+    for( chn1=Database->clist; chn1; chn1=chn1->cnext )
+        if( chn1->glist && IsProtein(chn1->glist->refno) &&
+            (!scoped || ChainHasSelection(chn1)) )
+        {   pos1 = 0;
+            for( group1=chn1->glist; group1; group1=group1->gnext )
+            {   pos1++;
+                if( IsAmino(group1->refno) && (ca1=FindGroupAtom(group1,1)) )
+                    HGridInsert( ca1, group1, chn1, pos1 );
+            }
+        }
+
     for(chn1=Database->clist; chn1; chn1=chn1->cnext)
         if( chn1->glist && (!scoped || ChainHasSelection(chn1)) )
         {   if( IsProtein(chn1->glist->refno) )
@@ -1717,6 +1771,8 @@ void CalcHydrogenBonds( full )
 	    } else if( IsDNA(chn1->glist->refno) )
                 CalcNucleicHBonds(chn1);
         }
+
+    HGridClear();
 
     if( FileDepth == -1 )
     {   if( CommandActive )

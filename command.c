@@ -3212,6 +3212,14 @@ int ExecuteCommand()
 
 	case(StructureTok):
                           FetchToken();
+                          /* Unlike the lazy cartoon/ribbons/etc paths,
+                           * "structure" is an explicit request to
+                           * recalculate - force it regardless of any
+                           * cached (or PDB HELIX/SHEET record based)
+                           * InfoHelixCount, matching the original
+                           * command's always-recompute behaviour.
+                           */
+                          InfoHelixCount = -1;
                           if( !CurToken || (CurToken==FalseTok) )
 			  {   DetermineStructure(False,True);
                           } else if( CurToken==TrueTok )
