@@ -337,8 +337,7 @@ int WriteMolScriptFile( name )
     /* fputs("  trace amino-acids;\n",OutFile); */
 
     if( Database->clist )
-    {   if( InfoHelixCount<0 )
-            DetermineStructure( False );
+    {   DetermineStructure( False, False );
 
         for( chain=Database->clist; chain; chain=chain->cnext )
         {   prev = (Group __far*)0;

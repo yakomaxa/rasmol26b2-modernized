@@ -1,3 +1,65 @@
+[04/10/26]	molecule.h molecule.c
+		Fixed "cartoon"/"ribbons" being impractically slow (minutes,
+		sometimes never finishing) on very large multi-chain
+		structures (8J07: 1546 chains, 3.1M atoms), via two separate
+		O(n^2)-ish algorithms neither of which had ever been exercised
+		at this scale before:
+		 - CalcProteinHBonds() searched for a hydrogen-bonded partner
+		   by scanning every other residue in the chain, checking a
+		   CA-CA distance cutoff (MaxHDist, 9A) on each one. Replaced
+		   with a spatial hash grid (cell size == the cutoff, so any
+		   pair in range is guaranteed to land in the same or an
+		   immediately neighbouring cell - the standard cell-list
+		   technique): built fresh per chain from its own amino-acid
+		   alpha-carbons, queried instead of scanned. Turns an
+		   O(chain-length^2) search into O(chain-length). Caught and
+		   fixed a bug of my own along the way: two distinct
+		   neighbour cells can hash to the same bucket in a fixed-size
+		   table, and visiting a colliding bucket twice silently
+		   double-counted (and double-bonded) whatever lived in it;
+		   fixed by deduplicating the up-to-27 neighbour bucket
+		   indices before searching. Verified exact H-bond/Helix/
+		   Strand/Turn count parity against the un-optimised code on
+		   1mbn, 7dns and 1bmf before and after.
+		 - FindBetaSheets()'s TestLadder() helper searches for a beta-
+		   strand pairing partner by walking every residue in every
+		   chain *after* the current one in the database - completely
+		   independent of H-bond data, so the grid fix above didn't
+		   help it at all. Since a ladder partner must be hydrogen
+		   bonded (hence within the same distance cutoff), precompute
+		   each protein chain's alpha-carbon bounding box once per
+		   FindBetaSheets() call and skip any later chain whose
+		   cutoff-expanded bounding box can't possibly contain a
+		   partner, without changing TestLadder's internal residue
+		   walk at all (lower risk, given it's hand-tuned legacy code
+		   with pre-existing maybe-uninitialized warnings elsewhere in
+		   the same function). This was the dominant remaining cost:
+		   full "cartoon" on 8J07 (every one of the 1546 chains) now
+		   completes in 12.7s total (~7s of actual computation beyond
+		   the 5.4s load), versus needing to be killed before as it
+		   hadn't finished after several minutes. Verified exact
+		   Helix/Strand/Turn parity on 1mbn, 7dns and 1bmf (1bmf has
+		   real multi-chain structure, so this exercised the new
+		   cross-chain skip, not just a no-op).
+
+[04/10/26]	molecule.h
+		Widened Atom.serno and Group.serno from short (16-bit, max
+		32767) to Long (32-bit), after a user report of a visibly
+		wrong negative atom number ("Atom: C -15273") on the same
+		8J07 structure (3,146,111 atoms - PDB's own fixed-width
+		columns already overflow a 16-bit field, mmCIF just has no
+		ceiling at all to mask it). This was a latent bug in the
+		original 1995 code, only now actually reachable because
+		mmCIF removes the size limits PDB always had. Removed a
+		(short) truncating cast in the mmCIF atom-serial assignment
+		that would have silently reimposed the bug even after the
+		struct field was widened. Verified with a synthetic mmCIF
+		file using an atom id (3146111) and residue number (70000)
+		both deliberately beyond 32767: "select atomno=3146111" and
+		"select 70000" now each correctly select exactly one atom,
+		and "show sequence" prints the real residue number instead of
+		a wrapped negative one.
+
 [04/10/26]	molecule.h molecule.c infile.c abstree.h abstree.c command.c
 		render.c repres.c script.c transfor.c
 		Widened Chain.ident from a single char to a string (char

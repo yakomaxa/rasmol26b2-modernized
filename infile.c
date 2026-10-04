@@ -1730,7 +1730,7 @@ static void ProcessCIFAtom( rowVal, col )
 
     FormatCIFAtomName( atomVal, typeVal, name4 );
     ptr->refno = ComplexAtomType( name4 );
-    ptr->serno = (short)((col[ACOL_ID]>=0)? atoi(rowVal[col[ACOL_ID]]) : 0);
+    ptr->serno = (col[ACOL_ID]>=0)? atoi(rowVal[col[ACOL_ID]]) : 0;
     ptr->temp  = (short)((col[ACOL_TEMP]>=0)?
                           (int)(100.0*atof(rowVal[col[ACOL_TEMP]])) : 0);
     ptr->altl  = (*altVal && (*altVal!='.') && (*altVal!='?'))?

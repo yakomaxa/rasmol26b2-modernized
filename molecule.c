@@ -1367,11 +1367,94 @@ static int CalculateBondEnergy( group )
 }
 
 
+/* Spatial hash grid of alpha-carbon atoms, turning the "find CA atoms
+ * within MaxHDist" search below from O(chain-length^2) into O(chain-
+ * length). Cell size equals the search cutoff, so any pair of atoms
+ * within range is guaranteed to fall in the same or an immediately
+ * neighbouring (3x3x3) cell - the standard cell-list technique. It
+ * doesn't make sense to even look at residues many Angstroms away,
+ * which is all the O(n^2) scan was ultimately doing.
+ */
+#define HGridCellSize  2250   /* == sqrt(MaxHDist), in internal units */
+#define HGridHashBits  12
+#define HGridHashSize  (1<<HGridHashBits)
+#define HGridHashMask  (HGridHashSize-1)
+
+typedef struct _HGridEntry {
+    struct _HGridEntry *next;
+    Atom __far *ca;
+    Group __far *group;
+    int pos;
+    } HGridEntry;
+
+static HGridEntry *HGridTable[HGridHashSize];
+
+
+/* Floor division (toward -infinity): atom coordinates are routinely
+ * negative once InitialTransform() centres the molecule, and plain C
+ * '/' truncates toward zero, which would make the cell straddling
+ * zero twice as wide as every other cell.
+ */
+static long HGridCell( v )
+    Long v;
+{
+    if( v >= 0 )
+        return( v/HGridCellSize );
+    return( -(((-v)+HGridCellSize-1)/HGridCellSize) );
+}
+
+
+static unsigned int HGridHash( cx, cy, cz )
+    long cx, cy, cz;
+{
+    register unsigned long h;
+
+    h =  (unsigned long)cx * 2654435761UL;
+    h ^= (unsigned long)cy * 2246822519UL;
+    h ^= (unsigned long)cz * 3266489917UL;
+    return( (unsigned int)(h & HGridHashMask) );
+}
+
+
+static void HGridInsert( ca, group, pos )
+    Atom __far *ca;  Group __far *group;  int pos;
+{
+    register HGridEntry *entry;
+    register unsigned int h;
+
+    entry = (HGridEntry*)malloc(sizeof(HGridEntry));
+    if( !entry ) FatalDataError("Memory allocation failed");
+
+    entry->ca = ca;
+    entry->group = group;
+    entry->pos = pos;
+
+    h = HGridHash( HGridCell(ca->xorg), HGridCell(ca->yorg),
+                   HGridCell(ca->zorg) );
+    entry->next = HGridTable[h];
+    HGridTable[h] = entry;
+}
+
+
+static void HGridClear()
+{
+    register HGridEntry *entry, *next;
+    register int i;
+
+    for( i=0; i<HGridHashSize; i++ )
+    {   for( entry=HGridTable[i]; entry; entry=next )
+        {   next = entry->next;
+            free( entry );
+        }
+        HGridTable[i] = (HGridEntry*)0;
+    }
+}
+
+
 static void CalcProteinHBonds( chn1 )
     Chain __far *chn1;
 {
     register int energy, offset;
-    register Chain __far *chn2;
     register Group __far *group1;
     register Group __far *group2;
     register Atom __far *ca1;
@@ -1379,10 +1462,24 @@ static void CalcProteinHBonds( chn1 )
     register Atom __far *pc1;
     register Atom __far *po1;
     register Atom __far *n1;
-    register int pos1,pos2;
+    register int pos1;
     register int dx,dy,dz;
     register double dco;
     register Long dist;
+    register HGridEntry *entry;
+    long cx,cy,cz,ix,iy,iz;
+    unsigned int buckets[27], h;
+    int nbuckets, k, dup;
+
+    /* Only Hydrogen Bond within a single chain! Build the candidate
+     * (acceptor) grid from just this chain's own amino-acid CAs.
+     */
+    pos1 = 0;
+    for( group2=chn1->glist; group2; group2=group2->gnext )
+    {   pos1++;
+        if( IsAmino(group2->refno) && (ca2=FindGroupAtom(group2,1)) )
+            HGridInsert( ca2, group2, pos1 );
+    }
 
     pos1 = 0;
     pc1 = po1 = (void __far*)0;
@@ -1415,23 +1512,34 @@ static void CalcProteinHBonds( chn1 )
 	nzorg = (int)n1->zorg;   hzorg = nzorg + (int)(dz/dco);
 	res1 = res2 = 0;
 
-	/* Only Hydrogen Bond within a single chain!       */
-	/* for(chn2=Database->clist;chn2;chn2=chn2->cnext) */
+	cx = HGridCell(ca1->xorg);
+	cy = HGridCell(ca1->yorg);
+	cz = HGridCell(ca1->zorg);
 
-	chn2 = chn1;
-	{   /* Only consider non-empty peptide chains! */
-	    /* if( !chn2->glist || !IsProtein(chn2->glist->refno) ) */
-	    /*     continue;                                        */
+	/* Collect the up-to-27 neighbouring bucket hashes first and
+	 * dedupe them, since two distinct neighbour cells can hash to
+	 * the same bucket - without this, a colliding bucket gets
+	 * walked twice, double-counting (and double-bonding) whatever
+	 * candidate lives in it.
+	 */
+	nbuckets = 0;
+	for( ix=-1; ix<=1; ix++ )
+	for( iy=-1; iy<=1; iy++ )
+	for( iz=-1; iz<=1; iz++ )
+	{   h = HGridHash(cx+ix,cy+iy,cz+iz);
+	    dup = False;
+	    for( k=0; k<nbuckets; k++ )
+		if( buckets[k]==h ) { dup = True; break; }
+	    if( !dup )
+		buckets[nbuckets++] = h;
+	}
 
-	    pos2 = 0;
-	    for(group2=chn2->glist;group2;group2=group2->gnext)
-	    {   pos2++;
+	for( k=0; k<nbuckets; k++ )
+	    for( entry=HGridTable[buckets[k]]; entry; entry=entry->next )
+	    {   group2 = entry->group;
+		ca2 = entry->ca;
+
 		if( (group2==group1) || (group2->gnext==group1) )
-		    continue;
-
-		if( !IsAmino(group2->refno) ) 
-		    continue;
-		if( !(ca2=FindGroupAtom(group2,1)) ) 
 		    continue;
 
 		dx = (int)(ca1->xorg-ca2->xorg);
@@ -1447,9 +1555,7 @@ static void CalcProteinHBonds( chn1 )
 		    continue;
 
 		if( (energy = CalculateBondEnergy(group2)) )
-		{   if( chn1 == chn2 )
-		    {   offset = pos1 - pos2;
-		    } else offset = 0;
+		{   offset = pos1 - entry->pos;
 
 		    if( energy<res1 )
 		    {   best2CA = best1CA;  best1CA = ca2;
@@ -1463,15 +1569,16 @@ static void CalcProteinHBonds( chn1 )
 			off2 = offset;
 		    }
 		}
-	    }  /* group2 */
-	}      /* chn2 */
+	    }
 
-	if( res1 ) 
-	{   if( res2 ) 
+	if( res1 )
+	{   if( res2 )
 		CreateHydrogenBond(ca1,best2CA,n1,best2,res2,off2);
 	    CreateHydrogenBond(ca1,best1CA,n1,best1,res1,off1);
 	}
     }
+
+    HGridClear();
 }
 
 
@@ -1559,12 +1666,38 @@ static void CalcNucleicHBonds( chn1 )
 }
 
 
-void CalcHydrogenBonds()
+static int ChainHasSelection( chain )
+    Chain __far *chain;
+{
+    register Group __far *group;
+    register Atom __far *aptr;
+
+    for( group=chain->glist; group; group=group->gnext )
+        for( aptr=group->alist; aptr; aptr=aptr->anext )
+            if( aptr->flag & SelectFlag )
+                return( True );
+    return( False );
+}
+
+
+void CalcHydrogenBonds( full )
+    int full;
 {
     register Chain __far *chn1;
+    register int scoped;
     char buffer[40];
 
     if( !Database ) return;
+
+    scoped = !full && ((MainAtomCount+HetaAtomCount) > HBondScopeThreshold);
+
+    /* Full requests are cached forever, exactly as before. Scoped
+     * requests always redo their (cheap, selection-bounded) work,
+     * since "what's selected" can change on every call.
+     */
+    if( !scoped && (InfoHBondCount>=0) )
+        return;
+
     ReclaimHBonds( CurMolecule->hlist );
     CurMolecule->hlist = (void __far*)0;
     CurHBond = &CurMolecule->hlist;
@@ -1578,7 +1711,7 @@ void CalcHydrogenBonds()
     }
 
     for(chn1=Database->clist; chn1; chn1=chn1->cnext)
-        if( chn1->glist )
+        if( chn1->glist && (!scoped || ChainHasSelection(chn1)) )
         {   if( IsProtein(chn1->glist->refno) )
 	    {   CalcProteinHBonds(chn1);
 	    } else if( IsDNA(chn1->glist->refno) )
@@ -1589,9 +1722,10 @@ void CalcHydrogenBonds()
     {   if( CommandActive )
 	    WriteChar('\n');
         CommandActive=False;
-    
-        sprintf(buffer,"Number of H-Bonds ... %d\n",InfoHBondCount);
+
+        sprintf(buffer,"Number of H-Bonds ... %d",InfoHBondCount);
         WriteString(buffer);
+        WriteString(scoped? " (selected chains only)\n" : "\n");
     }
 }
 
@@ -1669,6 +1803,28 @@ static HBond __far *hcurri, __far *hnexti;
 static Group __far *curri, __far *nexti;
 
 
+/* True if atom pt could plausibly have a ladder partner somewhere in
+ * chain, i.e. pt lies within one H-bond cutoff of chain's alpha-carbon
+ * bounding box (computed once in FindBetaSheets(), below). Beta-sheet
+ * pairing requires the strands to actually be hydrogen bonded, so two
+ * residues more than a cutoff apart can never pair - this just avoids
+ * TestLadder() walking into (the overwhelming majority of) chains
+ * that are nowhere near curri/nexti at all, which is all the blind
+ * "every subsequent chain in the database" scan used to do.
+ */
+static int ChainNearPoint( chain, pt )
+    Chain __far *chain;  Atom __far *pt;
+{
+    if( !pt ) return( True );
+    if( (pt->xorg < chain->bbMinX-HGridCellSize) ||
+        (pt->xorg > chain->bbMaxX+HGridCellSize) ) return( False );
+    if( (pt->yorg < chain->bbMinY-HGridCellSize) ||
+        (pt->yorg > chain->bbMaxY+HGridCellSize) ) return( False );
+    if( (pt->zorg < chain->bbMinZ-HGridCellSize) ||
+        (pt->zorg > chain->bbMaxZ+HGridCellSize) ) return( False );
+    return( True );
+}
+
 
 static void TestLadder( chain )
     Chain __far *chain;
@@ -1726,9 +1882,18 @@ static void TestLadder( chain )
 		while( hnextj && !IsAminoBackbone(hnextj->src->refno) )
 		    hnextj = hnextj->hnext;
 
-	if( (chain = chain->cnext) ) 
-	{   nextj = chain->glist;
-	} else return;
+	for(;;)
+	{   if( !(chain = chain->cnext) )
+		return;
+	    if( ChainNearPoint(chain,ccurri) || ChainNearPoint(chain,cnexti) )
+	    {   nextj = chain->glist;
+		break;
+	    }
+	    /* else: chain is nowhere near curri/nexti - no possible
+	     * ladder partner there, so skip it without even entering
+	     * its residue list.
+	     */
+	}
     }
 }
 
@@ -1736,8 +1901,37 @@ static void TestLadder( chain )
 static void FindBetaSheets()
 {
     register Chain __far *chain;
+    register Group __far *group;
+    register Atom __far *ca;
     register int ladder;
     register int count;
+
+    /* Precompute each protein chain's alpha-carbon bounding box, so
+     * TestLadder() can cheaply skip chains that can't possibly hold a
+     * ladder partner instead of blindly walking every chain that
+     * follows in the database.
+     */
+    for( chain=Database->clist; chain; chain=chain->cnext )
+        if( chain->glist && IsProtein(chain->glist->refno) )
+        {   chain->bbMinX = chain->bbMaxX = chain->glist->alist->xorg;
+            chain->bbMinY = chain->bbMaxY = chain->glist->alist->yorg;
+            chain->bbMinZ = chain->bbMaxZ = chain->glist->alist->zorg;
+            for( group=chain->glist; group; group=group->gnext )
+                if( IsAmino(group->refno) && (ca=FindGroupAtom(group,1)) )
+                {   if( ca->xorg < chain->bbMinX )
+                    {   chain->bbMinX = ca->xorg;
+                    } else if( ca->xorg > chain->bbMaxX )
+                        chain->bbMaxX = ca->xorg;
+                    if( ca->yorg < chain->bbMinY )
+                    {   chain->bbMinY = ca->yorg;
+                    } else if( ca->yorg > chain->bbMaxY )
+                        chain->bbMaxY = ca->yorg;
+                    if( ca->zorg < chain->bbMinZ )
+                    {   chain->bbMinZ = ca->zorg;
+                    } else if( ca->zorg > chain->bbMaxZ )
+                        chain->bbMaxZ = ca->zorg;
+                }
+        }
 
     hnexti = Database->hlist;
     for( chain=Database->clist; chain; chain=chain->cnext )
@@ -1885,18 +2079,22 @@ static void FindBetaTurns()
 }
 
 
-void DetermineStructure( flag )
-    int flag;
+void DetermineStructure( flag, full )
+    int flag, full;
 {
     register Chain __far *chain;
     register Group __far *group;
+    register int scoped;
     char buffer[40];
 
     if( !Database )
 	return;
 
-    if( InfoHBondCount<0 )
-	CalcHydrogenBonds();
+    scoped = !full && ((MainAtomCount+HetaAtomCount) > HBondScopeThreshold);
+    if( !scoped && (InfoHelixCount>=0) )
+        return;
+
+    CalcHydrogenBonds( full );
 
     if( InfoHelixCount>=0 )
 	for( chain=Database->clist; chain; chain=chain->cnext )

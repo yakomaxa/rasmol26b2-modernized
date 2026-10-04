@@ -1339,16 +1339,13 @@ static Expr *ParseExpression( level )
 	 case(2): /* Primitives */
 		  if( IsPredTok(CurToken) || (CurToken==BackboneTok) )
 		  {   switch( CurToken )
-		      {   case(HelixTok):    if( InfoHelixCount<0 )
-						 DetermineStructure(False);
+		      {   case(HelixTok):    DetermineStructure(False,True);
 					     pred = PredHelix;
 					     break;
-			  case(SheetTok):    if( InfoLadderCount<0 )
-						 DetermineStructure(False);
+			  case(SheetTok):    DetermineStructure(False,True);
 					     pred = PredSheet;
 					     break;
-			  case(TurnTok):     if( InfoTurnCount<0 )
-						 DetermineStructure(False);
+			  case(TurnTok):     DetermineStructure(False,True);
 					     pred = PredTurn;
 					     break;
 			  case(CystineTok):  if( InfoSSBondCount<0 )
@@ -3216,9 +3213,9 @@ int ExecuteCommand()
 	case(StructureTok):
                           FetchToken();
                           if( !CurToken || (CurToken==FalseTok) )
-			  {   DetermineStructure(False);
+			  {   DetermineStructure(False,True);
                           } else if( CurToken==TrueTok )
-                          {   DetermineStructure(True);
+                          {   DetermineStructure(True,True);
                           } else CommandError(ErrorMsg[ErrSyntax]);
 			  break;
 
