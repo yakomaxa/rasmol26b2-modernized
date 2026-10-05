@@ -71,6 +71,15 @@ list and supported-platform history are preserved verbatim in
     before any check could even see it.
   - Several implicit-function-declaration, maybe-uninitialized and
     other build warnings; `make` is now warning-free.
+  - `write script <file>` (session dump/replay — see below) emitted
+    `load pdb ...` for CIF-loaded molecules, misparsing the mmCIF text
+    as fixed-column PDB on replay; now correctly emits `load cif ...`.
+- **Session dump**: `write script <file>` (equivalent: `write rasmol
+  <file>` / `save script <file>`) was already in 2.6-beta-2 and still
+  works — it serialises the entire live session (loaded molecule, view,
+  colours, selection, every representation, H-bond/SS-bond display) to
+  a `.rsc` file that `rasmol -script <file>` replays to reproduce the
+  same state. Worth knowing about since it's easy to miss.
 - Full dated details of every change — both this modernization work
   and the original development history back to 1992 — are in
   [`ChangeLog`](ChangeLog).

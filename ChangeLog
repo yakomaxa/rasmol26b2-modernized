@@ -1,3 +1,32 @@
+[05/10/26]	script.c
+		"Dump current state" turns out to already exist in RasMol
+		2.6b2: "write script <file>" (also "write rasmol <file>" or
+		"save script <file>") already serialises the entire live
+		session - loaded molecule, view (rotation/zoom/slab), per-
+		atom colours and selection, every representation (cartoon/
+		ribbons/backbone/dots/labels/monitors), H-bond/SS-bond
+		display - to a replayable .rsc script. It just wasn't
+		mentioned in this fork's README, so this was unknown.
+		Found and fixed a real bug in it while verifying this against
+		this fork's main feature: WriteScriptFile()'s DataFileFormat
+		switch (used to generate the dumped script's "load" line) was
+		missing FormatCIF entirely, predating the mmCIF reader this
+		fork added - it fell through to the "default: pdb" case, so
+		"write script" on any CIF-loaded molecule emitted
+		"load pdb \"foo.cif\"" instead of "load cif \"foo.cif\"",
+		silently misparsing the mmCIF text as fixed-column PDB on
+		replay - the exact flattened/garbage-coordinate failure mode
+		already fixed for the normal load path, reintroduced here.
+		Confirmed concretely on pdb/1mbn.cif: replaying the old buggy
+		"load pdb" line on this file produces 136 phantom chains and
+		wrong bond counts (784 vs. the correct 1292) from the same
+		1216 atoms. Added the missing FormatCIF case (and FormatNMRPDB,
+		same gap, lower-stakes since it just loses the NMR-multi-model
+		flag rather than misparsing). Verified fixed: dumped script
+		now emits "load cif ...", replays cleanly, no errors. Full
+		regression suite (1mbn, 7dns, 1bmf, 7ahl, 3cro) re-run byte-
+		identical to pre-change output.
+
 [05/10/26]	(repo cleanup, no source changes)
 		Removed dead weight from the tree:
 		 - cexio.c: never built (CEXIOLIB is permanently commented
