@@ -855,11 +855,20 @@ int WriteScriptFile( name )
     switch( DataFileFormat )
     {   default:
         case(FormatPDB):      ptr = "pdb";      break;
+        case(FormatNMRPDB):   ptr = "nmrpdb";   break;
         case(FormatAlchemy):  ptr = "alchemy";  break;
         case(FormatCharmm):   ptr = "charmm";   break;
         case(FormatMol2):     ptr = "mol2";     break;
         case(FormatMDL):      ptr = "mdl";      break;
         case(FormatXYZ):      ptr = "xyz";      break;
+        /* Without this, a CIF-loaded molecule's dumped script emitted
+         * "load pdb ...", which silently misparses mmCIF text as
+         * fixed-column PDB (flattened/garbage coordinates on replay) -
+         * the exact failure mode this fork's CIF reader exists to fix
+         * on the *initial* load path, reintroduced here since this
+         * switch predates it.
+         */
+        case(FormatCIF):      ptr = "cif";      break;
     }
     fprintf(OutFile,"load %s \"%s\"\n",ptr,InfoFileName);
 
