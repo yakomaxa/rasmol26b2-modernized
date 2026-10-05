@@ -503,7 +503,12 @@ void SetRibbonStatus( enable, flag, width )
     if( !enable && !DrawRibbon )
 	return;
 
-    DetermineStructure(False,False);
+    /* Disabling never reads group->struc below (only DrawKnotFlag),
+     * so there's no need to pay for a full H-bond/structure recompute
+     * just to turn a representation off.
+     */
+    if( enable )
+        DetermineStructure(False,False);
 
     DrawRibbon = False;
     for( chain=Database->clist; chain; chain=chain->cnext )
