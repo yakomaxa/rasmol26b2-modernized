@@ -1,3 +1,64 @@
+[05/10/26]	(repo cleanup, no source changes)
+		Removed dead weight from the tree:
+		 - cexio.c: never built (CEXIOLIB is permanently commented
+		   out in rasmol.h, and the file isn't in Makefile's SRCS at
+		   all), fully unwired dead code.
+		 - Makefile.in: byte-identical to Makefile except its first
+		   comment line - not a real autoconf template (no @CC@-
+		   style substitution vars) and there's no configure script
+		   in the repo to consume it, so INSTALL's documented
+		   "cp Makefile.in Makefile" workflow was already stale.
+		 - log.txt (root, empty) and pdb/log.txt (2-line stray debug
+		   output from a GUI fetch), both leftover test-run noise.
+		 - Dead platform source and its build files, none of which
+		   this fork's Makefile has built since the SDL2 port:
+		   rasmac.c, raswin.c, x11win.c, mswin31.c, applemac.c,
+		   bitmaps.h (only ever included by x11win.c), and the
+		   mac/, mswin/, vms/ directories plus Makefile.nt,
+		   Makefile.pc and Imakefile. This is a deliberate scope
+		   narrowing (this fork targets SDL2/Linux/macOS only, not a
+		   historical-preservation project for every original 2.6b2
+		   target platform) - left INSTALL untouched since README.md
+		   already frames it as "original build notes" preserved
+		   verbatim, and it still accurately documents how upstream
+		   2.6b2 built on those platforms even though this fork no
+		   longer carries their source.
+		 - pdb/ (local large-structure test fixtures used for this
+		   session's H-bond/cartoon performance work: 8j07.cif,
+		   7bho.cif, 4v5d.cif, 7ahl.cif, etc, ~429MB) is kept on disk
+		   for continued regression testing but was never meant to be
+		   pushed; added "/pdb/" to .gitignore (replacing the stale
+		   "log.txt" entry, since that file no longer exists) so it
+		   can't be committed by accident.
+		Verified doc/rasmol.hlp == root rasmol.hlp are an intentional
+		duplicate, not redundant: command.c's InitHelpFile() does
+		fopen("rasmol.hlp") relative to cwd first, so the root copy
+		is what "help" actually finds at runtime; both were kept.
+		Rebuilt clean (zero warnings) and smoke-tested (data/1crn.pdb
+		loads, parses PDB HELIX/SHEET records, exits normally) after
+		all removals. Trackable repo size (excluding pdb/, .o files,
+		the rasmol binary, and .claude/) dropped to 3.2M.
+
+[04/10/26]	transfor.c
+		Fixed SetRibbonStatus() (backs cartoon/ribbons/strands/trace
+		on AND off) calling DetermineStructure(False,False)
+		unconditionally, including on the *disable* path, even though
+		the disable branch only ever reads/writes DrawKnotFlag and
+		never looks at group->struc. On a large structure in "scoped"
+		mode (> HBondScopeThreshold atoms) this meant every single
+		"cartoon off" was paying for a full H-bond/helix/strand/turn
+		recompute it had no use for, since scoped mode cannot cache
+		across calls (selection can change on every call, so it
+		always redoes the work - see the two entries below). Fixed by
+		only calling DetermineStructure() on the enable path. Verified
+		on 8J07 (1546 chains, 3.1M atoms, scoped mode): "cartoon on"/
+		"cartoon off"/"cartoon on" now shows "Please wait..." and
+		recomputes only on the two enables, not the disable in
+		between, with both enables still producing identical results
+		(265,415 H-Bonds/16,360 Helices/15,472 Strands/37,757 Turns).
+		Full regression suite (1mbn, 7dns, 1bmf, 7ahl, 3cro, 4v5d)
+		re-run byte-identical to pre-change output.
+
 [04/10/26]	command.c
 		Fixed the "structure" command silently doing nothing on
 		files whose secondary structure was already assigned (either
