@@ -1,3 +1,37 @@
+[05/10/26]	molecule.h infile.c
+		The mmCIF reader's _entry.id handling only ever expected the
+		classic 4-character Brookhaven code ("4HHB"): InfoIdentCode
+		was a 6-byte buffer (5 chars + terminator) and the parser in
+		ProcessCIFScalarItem() explicitly capped the copy at 5. The
+		PDB has since moved to 12-character "extended" identifiers
+		for entries once 4-letter codes run out ("pdb_00004hhb" -
+		"pdb_" + a 4-digit extension slot, currently always "0000",
+		+ the classic 4-char code), and both forms now appear in the
+		wild depending on when an entry was deposited/re-exported.
+		Widened InfoIdentCode to MAXIDENTCODE (13: 12 chars + NUL,
+		new #define in molecule.h) and removed the hardcoded "<5"
+		bound in the _entry.id parser so it copies whatever length
+		_entry.id actually is, up to that limit, rather than assuming
+		4. Deliberately did not rename "Brookhaven Code" anywhere
+		(molecule.c's summary printout, script.c's dumped-state
+		output) - old-fashioned, but it's RasMol's own long-standing
+		label and the PDB's old name, not a technical term tied to
+		the 4-character format. Left the two genuinely format-bound
+		truncations alone: ExtractString(4,...) reading the classic
+		fixed-column PDB HEADER record (cols 63-66 are hard-defined
+		as 4 characters by that file format, nothing to widen) and
+		the %.4s in SavePDBMolecule's HEADER writer (same reasoning,
+		output side - PDB format has no 12-character ID field to
+		write into, same class of hard format limit as the existing
+		single-character chain-ID-on-PDB-output constraint already
+		documented in README.md).
+		Verified on pdb/pdb_00004hhb.cif (haemoglobin, 12 chains,
+		4384 atoms): "Brookhaven Code ..... pdb_00004hhb" now
+		displays in full, previously would have silently truncated
+		to "pdb_0". Classic 4-character codes (1mbn.cif -> "1MBN",
+		4v5d.cif -> "4V5D") unaffected. Full regression suite (1mbn,
+		7dns, 1bmf, 7ahl, 3cro, 4v5d) re-run byte-identical.
+
 [05/10/26]	script.c
 		"Dump current state" turns out to already exist in RasMol
 		2.6b2: "write script <file>" (also "write rasmol <file>" or

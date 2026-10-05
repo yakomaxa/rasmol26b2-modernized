@@ -158,6 +158,14 @@ typedef struct _Group {
 
 #define MAXCHAINID 8
 
+/* Classic Brookhaven/PDB codes are 4 characters ("4HHB"); the newer
+ * "extended" PDB identifiers used once 4-letter codes run out are 12
+ * ("pdb_00004hhb" - "pdb_" + a 4-digit extension slot, currently always
+ * "0000", + the 4-char code). Sized for the longer of the two, +1 for
+ * the terminator.
+ */
+#define MAXIDENTCODE 13
+
 typedef struct _ChainSeg {
         struct _ChainSeg __far *cnext;    /* Linked list of chains     */
         Group __far *glist;               /* Linked list of groups     */
@@ -317,7 +325,7 @@ char InfoFileName[256];
 char InfoClassification[42];
 char InfoMoleculeName[80];
 char InfoSpaceGroup[11];
-char InfoIdentCode[6];
+char InfoIdentCode[MAXIDENTCODE];
 
 Real InfoCellAlpha, InfoCellBeta, InfoCellGamma;
 Real InfoCellA, InfoCellB, InfoCellC;
@@ -368,7 +376,7 @@ extern char ElemDesc[MAXELEM][4];
 extern char InfoClassification[42];
 extern char InfoMoleculeName[80];
 extern char InfoSpaceGroup[11];
-extern char InfoIdentCode[6];
+extern char InfoIdentCode[MAXIDENTCODE];
 
 extern Real InfoCellAlpha, InfoCellBeta, InfoCellGamma;
 extern Real InfoCellA, InfoCellB, InfoCellC;

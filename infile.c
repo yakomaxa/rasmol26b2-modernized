@@ -1880,7 +1880,12 @@ static void ProcessCIFScalarItem( tag )
     item = CIFItemName(tagbuf);
 
     if( CIFEqualN(tagbuf,"_entry.",7) && CIFEqual(item,"id") )
-    {   for( i=0; CIFTokBuf[i] && (i<5); i++ )
+    {   /* Classic Brookhaven codes are 4 characters ("4HHB"); newer
+         * "extended" PDB identifiers are 12 ("pdb_00004hhb") now that
+         * 4-letter codes are running out. Take whichever _entry.id
+         * actually is, up to MAXIDENTCODE-1, rather than assuming 4.
+         */
+        for( i=0; CIFTokBuf[i] && (i<MAXIDENTCODE-1); i++ )
             InfoIdentCode[i] = CIFTokBuf[i];
         InfoIdentCode[i] = '\0';
 
