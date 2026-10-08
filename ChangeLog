@@ -1,3 +1,220 @@
+[08/10/26]	Makefile molecule.c
+		Picked up mid-stream: CalcHydrogenBonds's per-chain
+		donor search had already been parallelised with OpenMP
+		(Makefile: -fopenmp; molecule.c: threadprivate scratch
+		state, a per-thread HBond sublist mechanism, and a parallel
+		for over chains) but never verified or written up - no
+		ChangeLog entry, no regression run. Reviewed the mechanism
+		end to end before trusting it; documenting here since it
+		checks out clean.
+		Each chain is handled start-to-finish by exactly one
+		thread (#pragma omp parallel for schedule(static) over
+		a flat chainarr[], built once since OMP's worksharing
+		loop needs random-access indexing rather than a clist
+		walk) - CalcProteinHBonds()/CalcNucleicHBonds()
+		never split a single chain's residues across
+		threads, so the pre-existing per-donor scratch state
+		(hxorg/nxorg/.../best1/best2/res1/res2/off1/off2,
+		shared across the
+		CalcProteinHBonds/CalcNucleicHBonds/CalculateBondEnergy
+		call trio) only needed to stop being shared across chains,
+		not across residues - solved with #pragma omp threadprivate
+		rather than threading any of that call chain's arguments.
+		The acceptor spatial-hash grid (HGridTable) is built
+		once, single-threaded, before the parallel region and
+		is read-only for the rest of the call, so it needs no
+		locking. The only data genuinely shared and mutated across
+		threads is MemSize and InfoHBondCount, both wrapped in
+		#pragma omp atomic, plus each thread's own slot of the new
+		ThrHead/ThrTail/ThrFree arrays via AppendThreadHBond() -
+		a per-thread twin of CreateHydrogenBond() that leaves the
+		latter, and the "bond hbond" command path that calls it,
+		untouched.
+		After the parallel region, each thread's private sublist
+		is spliced onto the real list strictly in thread order
+		(0..nthreads-1). This relies on an actual OpenMP guarantee,
+		not a hopeful assumption: an unchunked schedule(static)
+		always hands out contiguous, increasing ranges of
+		the loop index to threads in ascending rank order, so
+		concatenating sublists by thread number reproduces exactly
+		the chain-order list the old sequential loop built -
+		which matters because FindAlphaHelix()/FindBetaSheets(),
+		run immediately afterward, assume every donor atom's
+		H-bonds are contiguous in Database->hlist.
+		Confirmed the single-threaded fallback is genuinely
+		inert, not just assumed: building without -fopenmp leaves
+		omp_get_max_threads()/omp_get_thread_num() resolved to the
+		pre-existing 1/0 #define shims and the four #pragma omp
+		lines silently ignored by gcc ("ignoring #pragma omp ..."),
+		collapsing the whole mechanism back to one thread doing
+		all the work in chain order. Compiled and diffed warnings
+		both ways: no new warnings on either side of -fopenmp.
+		Verified: full regression suite (1mbn, 7dns, 1bmf,
+		7ahl, 3cro, 4v5d) plus 8J07 (1546 chains, 3.1M atoms)
+		all byte-identical across OMP_NUM_THREADS=1/2/4/8
+		- 8J07 unchanged at 265,415/16,360/15,472/37,757
+		H-Bonds/Helices/Strands/Turns, the same figures the
+		FindBetaSheets entry above recorded prior to this change,
+		confirming the threading didn't perturb them. 8J07 wall
+		time: ~21s at 1 thread down to ~13.6s at 8 (5 physical
+		cores available here).
+		Also ran the suite under ThreadSanitizer, which does
+		flag a race - between AppendThreadHBond()'s per-thread
+		tail-pointer write and the merge loop's later read of that
+		same thread's ThrHead[] slot. Chased it down: a known false
+		positive, not a real bug. GCC's libgomp isn't instrumented
+		for TSan, so TSan has no way to see a parallel region's
+		implicit join barrier as a happens-before edge, and reports
+		the identical warning for a minimal, deliberately race-free
+		toy OpenMP program that does nothing but write to disjoint
+		per-thread array slots and read them back after the loop
+		joins. Recorded here so it isn't mistaken for a real bug
+		later; a clean TSan run would need an LLVM/libomp-based
+		build, not attempted.
+		FindBetaSheets()/TestLadder() (above) remains
+		single-threaded - the candidate-chain buffer refactor
+		there was explicitly preparatory, not a parallelisation;
+		this entry covers CalcHydrogenBonds only.
+
+[08/10/26]	molecule.c
+		Found via gprof profiling (8J07: 1546 chains, 3.1M atoms) that
+		FindBetaSheets()/TestLadder() - 16% of total runtime on that
+		structure, second only to CalcHydrogenBonds - still had a real
+		algorithmic gap left over from the earlier cross-chain bbox-
+		skip fix: that fix only avoided *descending into* a distant
+		chain's residue list, not the cost of *reaching* it. Every
+		single ladder-continuation check (called once per residue,
+		not once per chain - ~396,307 times on 8J07) walked the
+		*entire* remaining chain list one chain at a time via
+		ChainNearPoint(), because the skip test ran per-residue
+		instead of being reused across a chain's residues. Profiled
+		at 790,428,218 ChainNearPoint() calls - roughly half the
+		1546-chain list scanned, on average, for every single check,
+		almost always finding nothing (cross-chain strand pairing is
+		rare).
+		Fixed by observing that every point TestLadder() ever tests
+		(ccurri/cnexti) lies inside the *current outer chain's own
+		bbox* by construction, so "does candidate chain C overlap the
+		outer chain's bbox (expanded by the same cutoff)" is a safe
+		superset of "would ChainNearPoint() accept C for this
+		specific point" - true for *any* residue of the outer chain,
+		computed once per outer chain instead of once per residue.
+		Added ChainsOverlap() (chain-bbox-vs-chain-bbox, same cutoff
+		as ChainNearPoint) and, in FindBetaSheets(), build a short
+		candidate-chain buffer with it once per outer chain; TestLadder()
+		now walks that short buffer (by index) instead of the full
+		chain linked list, with the exact same ChainNearPoint() per-
+		point recheck still in place afterward - so this changes
+		*how fast* the existing candidates are found, not *which*
+		chains are ever considered or in what order. Zero behavioural
+		change, confirmed by byte-identical H-Bond/Helix/Strand/Turn
+		counts on every regression file including 8J07 itself
+		(265,415/16,360/15,472/37,757, unchanged).
+		Deliberately passed the candidate buffer as explicit
+		parameters (TestLadder(chain,nearbuf,nearcount)) rather than
+		as file-static globals or a field on the Chain struct, even
+		though TestLadder already depends on a web of pre-existing
+		file-static cross-call state (curri/nexti/ccurri/cnexti/etc.)
+		for unrelated reasons - this specific addition should not be
+		one more thing standing in the way if FindBetaSheets()'s outer
+		per-chain loop is ever parallelized later, since each
+		concurrent outer-chain iteration would need its own buffer,
+		not one shared mutable field racing across threads.
+		A/B'd on 8J07 (load+cartoon+exit, release build, two runs
+		each): baseline 31.3s wall / 30.1s user vs. fixed 27.5s and
+		25.6s wall / 26.6s and 25.2s user - roughly 15% faster on the
+		single most expensive command on the largest available test
+		structure, from a pure algorithmic fix with no new threading.
+		Full regression suite (1mbn, 7dns, 1bmf, 7ahl, 3cro, 4v5d)
+		re-run byte-identical; -Wall/-Wextra sanity pass clean.
+
+[08/10/26]	infile.c infile.h outfile.c outfile.h script.c script.h
+		command.c command.h rasmol.c tokens.h
+		"Super minimized" pass: narrowed molecule/export format
+		support to only what this fork actually cares about (PDB,
+		NMRPDB, mmCIF for reading/writing; PPM and PostScript
+		(write vectps) plus the write-script session dump for
+		export), and removed everything else as dead weight:
+		 - infile.c: deleted LoadMDLMolecule, LoadXYZMolecule,
+		   LoadMol2Molecule, LoadAlchemyMolecule, LoadCharmmMolecule,
+		   LoadMOPACMolecule, LoadMacroModelMolecule,
+		   LoadBiosymMolecule, LoadSHELXMolecule, LoadFDATMolecule,
+		   SaveMDLMolecule, SaveAlchemyMolecule, SaveXYZMolecule,
+		   SaveCIFMolecule, plus the now-orphaned Alchemy atom-type
+		   lookup table (AlcAtomTable/ConvTable). Three of these
+		   (LoadBiosymMolecule, LoadSHELXMolecule, LoadFDATMolecule)
+		   were already complete no-op stubs in 2.6-beta-2 - pure
+		   `return(True)` with zero parsing, silently "succeeding"
+		   while loading nothing; LoadMacroModelMolecule was a half-
+		   stub that read and discarded records without ever
+		   building a Database. SaveCIFMolecule was likewise a no-op
+		   stub that never wrote a file (see the README.md fix below).
+		   2300 -> 1280 lines.
+		 - outfile.c: deleted WriteGIFFile, WriteRastFile (Sun
+		   Rasterfile), WriteEPSFFile (raster/mono EPS), WriteBMPFile,
+		   WritePICTFile, WriteIRISFile and their dedicated helpers/
+		   state (LZW trie buffers, RLE packet state, BMP packet
+		   state, Sun rasterfile magic numbers, EPSF compression
+		   ratio), keeping WritePPMFile and WriteVectPSFile (and the
+		   shared FatalOutputError/WriteByte/CalcInvColourMap/OutFile/
+		   LineWidth/VectSolid/VectCol state both still use).
+		   2795 -> 1378 lines.
+		 - script.c: deleted WriteMolScriptFile (whose own atom/
+		   colour helpers were already dead in this exact file - an
+		   `#ifndef SCRIPT` guard around them was always false, since
+		   script.c itself `#define`s SCRIPT) and the entire Kinemage
+		   writer (WriteKinemageFile + its Mage-colour-name table and
+		   MagePrev/MageCol state), keeping WriteScriptFile and all
+		   of its shared helpers (the H-bond/colour-frequency-table
+		   machinery) untouched. 1521 -> 726 lines.
+		 - command.c/rasmol.c: pruned the matching dispatch cases
+		   (FetchFile's load-format switch, WriteImageFile's export-
+		   format switch, the write/save molecule-format switch, the
+		   "-format" command-line table in rasmol.c, DisplayUsage()'s
+		   usage string, and a GUI menu callback in rasmol.c's
+		   ProcessCommand that referenced the removed image writers -
+		   that whole callback turns out to be unreachable in the
+		   SDL2 backend already, since sdlwin.c's FetchEvent()
+		   unconditionally returns 0 ("No menu system..."), but only
+		   the dangling calls were touched here, not the dead menu
+		   tree itself - that's a separate cleanup, not attempted in
+		   this pass). Also removed the "set kinemage on/off" toggle
+		   (command.c), since KinemageFlag could otherwise still be
+		   set True with no writer left to consume it meaningfully -
+		   script.c's WriteScriptFile helpers check KinemageFlag
+		   internally (shared code with the now-removed Kinemage
+		   writer) and must only ever see it False.
+		 - tokens.h/command.h: removed the Format #defines and token
+		   table entries for every dropped format, keeping FormatPDB/
+		   FormatNMRPDB/FormatCIF's numeric values untouched (Tok2Format/
+		   Format2Tok do fixed arithmetic on them). infile.h/outfile.h/
+		   script.h trimmed to match.
+		Found and fixed a real bug introduced by this pass, caught by
+		the regression suite: tokens.h's keyword lookup
+		(LookUpKeyword() in command.c) isn't a simple sorted search -
+		it binary-searches Keyword[] within a length-bucket, and
+		KeyLen[] is a *hardcoded* cumulative-count-by-length index
+		table into that array. Deleting ~30 Keyword[] entries without
+		recomputing KeyLen[] left every bucket boundary past the
+		first deletion wrong, breaking lookup for any keyword whose
+		bucket shifted - caught as "structure true" suddenly reporting
+		"Unrecognised command!" on every regression file. Fixed by
+		recomputing KeyLen[] from the actual post-deletion Keyword[]
+		contents (old: 0,3,8,28,61,97,148,181,209,225,229,236; new:
+		0,3,7,21,48,82,128,160,186,201,204,210).
+		Verified: full regression suite (1mbn, 7dns, 1bmf, 7ahl, 3cro,
+		4v5d) byte-identical to pre-minimization output; pdb_00004hhb.cif
+		(12-character extended ID) still loads and computes structure
+		correctly; a broad smoke test across command keywords of every
+		length (1-11 chars) plus write script/ppm/vectps all succeed
+		with no "Unrecognised command" errors. Zero build warnings
+		throughout, including a one-off -Wall/-Wextra pass specifically
+		to catch orphaned statics (found and removed AlcAtomTable, the
+		only one actually caused by this pass - LutInv was already
+		EIGHTBIT-gated-inert before this work and is left as-is,
+		consistent with not touching the separate 8-bit/24-bit colour
+		axis). rasmol binary: 336504 -> 270920 bytes (-19.5%).
+
 [05/10/26]	molecule.h infile.c
 		The mmCIF reader's _entry.id handling only ever expected the
 		classic 4-character Brookhaven code ("4HHB"): InfoIdentCode

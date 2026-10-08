@@ -564,11 +564,6 @@ int FetchFile( format, info, name )
     {   switch( format )
         {   case(FormatNMRPDB):
 	    case(FormatPDB):     src = (char*)getenv("RASMOLPDBPATH");  break;
-	    case(FormatMol2):    src = (char*)getenv("RASMOLMOL2PATH"); break;
-            case(FormatMMDB):    src = (char*)getenv("RASMOLMMDBPATH"); break;
-	    case(FormatAlchemy): src = (char*)getenv("RASMOLMOLPATH");  break;
-	    case(FormatMDL):     src = (char*)getenv("RASMOLMDLPATH");  break;
-	    case(FormatXYZ):     src = (char*)getenv("RASMOLXYZPATH");  break;
 	    default:             src = NULL;
 	}
 
@@ -653,20 +648,7 @@ int FetchFile( format, info, name )
     switch( format )
     {   case(FormatPDB):      done = LoadPDBMolecule(fp,False);  break;
         case(FormatNMRPDB):   done = LoadPDBMolecule(fp,True);   break;
-        case(FormatMacroMod): done = LoadMacroModelMolecule(fp); break;
-        case(FormatAlchemy):  done = LoadAlchemyMolecule(fp);    break;
-	case(FormatCharmm):   done = LoadCharmmMolecule(fp);     break;
-        case(FormatBiosym):   done = LoadBiosymMolecule(fp);     break;
-        case(FormatMOPAC):    done = LoadMOPACMolecule(fp);      break;
-        case(FormatSHELX):    done = LoadSHELXMolecule(fp);      break;
-	case(FormatMol2):     done = LoadMol2Molecule(fp);       break;
-        case(FormatFDAT):     done = LoadFDATMolecule(fp);       break;
-	case(FormatMDL):      done = LoadMDLMolecule(fp);        break;
-	case(FormatXYZ):      done = LoadXYZMolecule(fp);        break;
         case(FormatCIF):      done = LoadCIFMolecule(fp);        break;
-#ifdef CEXIOLIB
-        case(FormatCEX):      done = LoadCEXMolecule(fp);        break;
-#endif
         default:              done = False;
     }
 
@@ -1767,15 +1749,6 @@ static void ExecuteSetCommand()
 	    } else CommandError(ErrorMsg[ErrBadOpt]);
 	    break;
 
-	case(KinemageTok):
-	    FetchToken();
-	    if( !CurToken || (CurToken==FalseTok) )
-	    {   KinemageFlag = False;
-	    } else if( CurToken == TrueTok )
-	    {   KinemageFlag = True;
-	    } else CommandError(ErrorMsg[ErrBadOpt]);
-	    break;
-
 	case(MenusTok):
 	    FetchToken();
 	    if( !CurToken || (CurToken==TrueTok) )
@@ -2280,30 +2253,14 @@ static void WriteImageFile( name, type )
     char *name;  int type;
 {
     if( !type )
-#ifdef EIGHTBIT
-	type = GIFTok;
-#else
 	type = PPMTok;
-#endif
-
 
     switch( type )
-    {   case(GIFTok):     WriteGIFFile(name);             break;
-	case(BMPTok):     WriteBMPFile(name);             break;
-	case(PPMTok):     WritePPMFile(name,True);        break;
-	case(SUNTok):     WriteRastFile(name,False);      break;
-	case(SUNRLETok):  WriteRastFile(name,True);       break;
-	case(PICTTok):    WritePICTFile(name);            break;
-	case(IRISTok):    WriteIRISFile(name);            break;
-	case(EPSFTok):    WriteEPSFFile(name,True,True);  break;
-	case(MonoPSTok):  WriteEPSFFile(name,False,True); break;
+    {   case(PPMTok):     WritePPMFile(name,True);        break;
 	case(VectPSTok):  WriteVectPSFile(name);          break;
 
 	case(RasMolTok):
 	case(ScriptTok):     WriteScriptFile(name);     break;
-	case(POVRayTok):     WritePOVRayFile(name);     break;
-	case(KinemageTok):   WriteKinemageFile(name);   break;
-	case(MolScriptTok):  WriteMolScriptFile(name);  break;
     }
 }
 
@@ -3154,14 +3111,6 @@ int ExecuteCommand()
 			  } else switch(option)
 			  {   case(NMRPDBTok):
                               case(PDBTok):  SavePDBMolecule(param); break;
-                              case(MDLTok):  SaveMDLMolecule(param); break;
-			      case(XYZTok):  SaveXYZMolecule(param); break;
-			      case(CIFTok):  SaveCIFMolecule(param); break;
-#ifdef CEXIOLIB
-                              case(CEXTok):  SaveCEXMolecule(param); break;
-#endif
-			      case(AlchemyTok): SaveAlchemyMolecule(param);
-						break;
 			  } break;
 
 	case(SourceTok):

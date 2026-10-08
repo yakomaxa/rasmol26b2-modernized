@@ -5,13 +5,16 @@
 #
 # Modernised build: targets a current gcc/clang + SDL2 instead of
 # 1990s Unix compilers and raw X11/Xlib. See sdlwin.c for the display
-# backend that replaced x11win.c.
+# backend that replaced x11win.c. -fopenmp parallelises the per-chain
+# hydrogen-bond search in molecule.c (CalcHydrogenBonds); harmless to
+# drop if OpenMP isn't available - molecule.c falls back to an inert
+# single-threaded #define shim for the one or two omp_* calls it uses.
 
-CC = gcc
-CFLAGS = -g -O2 -finline-functions $(shell sdl2-config --cflags)
+CC = gcc-13
+CFLAGS = -g -O2 -finline-functions -fopenmp $(shell sdl2-config --cflags)
 
 # For Debugging use LFLAGS =
-LFLAGS = -s
+LFLAGS = -s -fopenmp
 
 LIBS = -lm $(shell sdl2-config --libs)
 

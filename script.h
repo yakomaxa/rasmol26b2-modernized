@@ -11,16 +11,10 @@ int KinemageFlag;
 extern int KinemageFlag;
 
 #ifdef FUNCPROTO
-int WriteMolScriptFile( char* );
-int WriteKinemageFile( char* );
 int WriteScriptFile( char* );
-int WritePOVRayFile( char* );
 
 #else /* non-ANSI C compiler */
-int WriteMolScriptFile();
-int WriteKinemageFile();
 int WriteScriptFile();
-int WritePOVRayFile();
 
 #endif
 #endif

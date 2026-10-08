@@ -113,37 +113,13 @@
 #define IsMoleculeFormat(x)  (((x)>=350) && ((x)<=365))
 
 #define PDBTok         350
-#define MacroModelTok  351
-#define GaussianTok    352
-#define AlchemyTok     353
 #define NMRPDBTok      354
-#define CharmmTok      355
-#define BiosymTok      356
-#define MOPACTok       357
-#define SHELXTok       358
-#define Mol2Tok        359
-#define FDATTok        360
-#define MMDBTok        361
-#define MDLTok         362
-#define XYZTok         363
 #define CIFTok         364
-#define CEXTok         365
 
 /* Raster Tokens */
 #define IsImageFormat(x) (((x)>=366) && ((x)<=378))
-#define GIFTok         366
 #define PPMTok         367
-#define SUNTok         368
-#define SUNRLETok      369
-#define EPSFTok        370
-#define PICTTok        371
-#define IRISTok        372
-#define BMPTok         373
-#define MonoPSTok      374
 #define VectPSTok      375
-#define KinemageTok    376
-#define MolScriptTok   377
-#define POVRayTok      378
 
 /* Feature Tokens */
 #define AtomTok        380
@@ -267,7 +243,7 @@ typedef struct {
 
 #define MAXKEYLEN 11
 static int KeyLen[MAXKEYLEN+1] = {
-        0, 3, 8, 28, 61, 97, 148, 181, 209, 225, 229, 236 };
+        0, 3, 7, 21, 48, 82, 128, 160, 186, 201, 204, 210 };
 
 static KeywordEntry Keyword[] = {
             { "X",  XTok },
@@ -278,18 +254,13 @@ static KeywordEntry Keyword[] = {
             { "CG", CGTok   },
             { "ON", TrueTok },
             { "OR", OrTok   },
-            { "PS", EPSFTok },  /* 8 */
 
             { "ALL", AllTok   },
             { "AND", AndTok   },
-            { "BMP", BMPTok   },
-            { "CEX", CEXTok   },
             { "CIF", CIFTok   },
             { "CPK", CPKTok   },
             { "DNA", DNATok   },
-            { "GIF", GIFTok   },
             { "ION", IonTok   },
-            { "MDL", MDLTok   },
             { "NOT", NotTok   },
             { "OFF", FalseTok },
             { "PDB", PDBTok   },
@@ -297,8 +268,6 @@ static KeywordEntry Keyword[] = {
             { "RED", RedTok   },
             { "RNA", RNATok   },
             { "SET", SetTok   },
-            { "SUN", SUNTok   },
-            { "XYZ", XYZTok   },
             { "ZAP", ZapTok   }, /* 28 */
 
             { "ATOM", AtomTok },
@@ -310,20 +279,14 @@ static KeywordEntry Keyword[] = {
             { "DASH", DashTok },
             { "DOTS", DotsTok },
             { "ECHO", EchoTok },
-            { "EPSF", EPSFTok },
             { "EXIT", ExitTok },
-            { "FDAT", FDATTok },
             { "HALF", HalfTok },
             { "HELP", HelpTok },
             { "INFO", InfoTok },
             { "IONS", IonTok  },
-            { "IRIS", IRISTok },
             { "LOAD", LoadTok },
-            { "MMDB", MMDBTok },
-            { "MOL2", Mol2Tok },
             { "MONO", MonoTok },
             { "NONE", NoneTok },
-            { "PICT", PICTTok },
             { "QUIT", QuitTok },
             { "SAVE", SaveTok },
             { "SHOW", ShowTok },
@@ -354,7 +317,6 @@ static KeywordEntry Keyword[] = {
             { "LARGE", LargeTok    },
             { "MENUS", MenusTok    },
             { "MODEL", ModelTok    },
-            { "MOPAC", MOPACTok    },
             { "MOUSE", MouseTok    },
             { "PAUSE", WaitTok     },
             { "POLAR", PolarTok    },
@@ -363,7 +325,6 @@ static KeywordEntry Keyword[] = {
             { "RESET", ResetTok    },
             { "RESNO", ResNoTok    },
             { "SHEET", SheetTok    },
-            { "SHELX", SHELXTok    },
             { "SMALL", SmallTok    },
             { "SOLID", SolidTok    },
             { "TRACE", TraceTok    },
@@ -375,13 +336,11 @@ static KeywordEntry Keyword[] = {
             { "ACIDIC", AcidicTok },
             { "ANGLES", AngleTok  },
             { "ATOMNO", AtomNoTok },
-            { "BIOSYM", BiosymTok },
             { "BONDED", BondedTok },
             { "BURIED", BuriedTok },
             { "CENTER", CentreTok },
             { "CENTRE", CentreTok },
             { "CHARGE", ChargeTok },
-            { "CHARMM", CharmmTok },
             { "COLORS", ColourTok },
             { "COLOUR", ColourTok },
             { "CYCLIC", CyclicTok },
@@ -395,11 +354,9 @@ static KeywordEntry Keyword[] = {
             { "LABELS", LabelTok  },
             { "LIGAND", LigandTok },
             { "MEDIUM", MediumTok },
-            { "MONOPS", MonoPSTok },
             { "NMRPDB", NMRPDBTok },
             { "NORMAL", NormalTok },
             { "ORANGE", OrangeTok },
-            { "POVRAY", POVRayTok },
             { "PURINE", PurineTok },
             { "PURPLE", PurpleTok },
             { "QUANTA", QuantaTok },
@@ -417,7 +374,6 @@ static KeywordEntry Keyword[] = {
             { "SOURCE", SourceTok },
             { "SSBOND", SSBondTok },
             { "STEREO", StereoTok },
-            { "SUNRLE", SUNRLETok },
             { "VECTPS", VectPSTok },
             { "VIOLET", VioletTok },
             { "WATERS", WaterTok  },
@@ -425,7 +381,6 @@ static KeywordEntry Keyword[] = {
             { "YELLOW", YellowTok },  /* 148 */
 
             { "ACYCLIC", AcyclicTok },
-            { "ALCHEMY", AlchemyTok },
             { "AMBIENT", AmbientTok },
             { "CARTOON", CartoonTok },
             { "CHARGED", ChargedTok },
@@ -467,10 +422,8 @@ static KeywordEntry Keyword[] = {
             { "DEPTHCUE", DepthCueTok },
             { "DISTANCE", DistanceTok },
             { "FONTSIZE", FontSizeTok },
-            { "GAUSSIAN", GaussianTok },
             { "HYDROGEN", HydrogenTok },
             { "IDENTIFY", IdentifyTok },
-            { "KINEMAGE", KinemageTok },
             { "MONITORS", MonitorTok  },
             { "NEGATIVE", AcidicTok   },
             { "POSITIVE", BasicTok    },
@@ -493,7 +446,6 @@ static KeywordEntry Keyword[] = {
             { "GREENBLUE", GreenblueTok },
             { "HOURGLASS", HourGlassTok },
             { "MAINCHAIN", MainChainTok },
-            { "MOLSCRIPT", MolScriptTok },
             { "MOUSEMODE", MouseTok     },
             { "POTENTIAL", PotentialTok },
             { "REDORANGE", RedorangeTok },
@@ -505,7 +457,6 @@ static KeywordEntry Keyword[] = {
             { "WIREFRAME", WireframeTok },  /* 225 */
 
             { "BACKGROUND", BackgroundTok },
-            { "MACROMODEL", MacroModelTok },
             { "MONOCHROME", MonoTok       },
             { "PYRIMIDINE", PyrimidineTok },  /* 229 */
 

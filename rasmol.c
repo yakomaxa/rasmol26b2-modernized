@@ -849,13 +849,7 @@ int ProcessCommand()
 
         case(3):  /* Export Image Filename */
                   if( *CurLine ) switch( StateOption )
-                  {   case(1):   WriteGIFFile(CurLine);            break;
-                      case(2):   WriteEPSFFile(CurLine,True,True); break;
-                      case(3):   WritePPMFile(CurLine,True);       break;
-                      case(4):   WriteIRISFile(CurLine);           break;
-                      case(5):   WriteRastFile(CurLine,True);      break;
-                      case(6):   WriteBMPFile(CurLine);            break;
-                      case(7):   WritePICTFile(CurLine);           break;
+                  {   case(3):   WritePPMFile(CurLine,True);       break;
                   }
                   ResetCommandLine(1);
                   break;
@@ -947,8 +941,7 @@ static void ProfileExecution()
 static void DisplayUsage()
 {
     fputs("usage: rasmol [-nodisplay] [-script scriptfile] ",OutFp);
-    fputs("[-size WxH] [[-format] file]\n    formats: -pdb -nmrpdb -cif ",OutFp);
-    fputs("-mopac -mdl -mol2 -xyz -alchemy -charmm\n\n",OutFp);
+    fputs("[-size WxH] [[-format] file]\n    formats: -pdb -nmrpdb -cif\n\n",OutFp);
     exit(1);
 }
 
@@ -982,26 +975,14 @@ static int ParseWindowSize( ptr )
 }
 
 
-#define FORMATOPTMAX   15
+#define FORMATOPTMAX   3
 static struct {
         char *ident;
         int format;
-    } FormatOpt[FORMATOPTMAX] = { 
-            { "alchemy",    FormatAlchemy  },
-            { "biosym",     FormatBiosym   },
+    } FormatOpt[FORMATOPTMAX] = {
             { "cif",        FormatCIF      },
-            { "charmm",     FormatCharmm   },
-            { "fdat",       FormatFDAT     },
-            { "gaussian",   FormatGaussian },
-            { "macromodel", FormatMacroMod },
-            { "mdl",        FormatMDL      },
-            { "mmdb",       FormatMMDB     },
-            { "mol2",       FormatMol2     },
-            { "mopac",      FormatMOPAC    },
             { "nmrpdb",     FormatNMRPDB   },
-            { "pdb",        FormatPDB      },
-            { "shelx",      FormatSHELX    },
-            { "xyz",        FormatXYZ      }
+            { "pdb",        FormatPDB      }
                                 };
     
 static void ProcessOptions(argc,argv)
@@ -1033,17 +1014,9 @@ static void ProcessOptions(argc,argv)
             {   if( (i==argc-1) || !ParseWindowSize(argv[++i]) )
                     DisplayUsage();
 
-            } else if( !strcmp(ptr,"sybyl") )
-            {   FileFormat = FormatMol2;
-                FileFormatGiven = True;
             } else if( !strcmp(ptr,"pdbnmr") )
             {   FileFormat = FormatNMRPDB;
                 FileFormatGiven = True;
-#ifdef CEXIOLIB
-            } else if( !strcmp(ptr,"cex") )
-            {   FileFormat = FormatCEX;
-                FileFormatGiven = True;
-#endif
 
             } else  /* File Formats! */
             {   for( j=0; j<FORMATOPTMAX; j++ )

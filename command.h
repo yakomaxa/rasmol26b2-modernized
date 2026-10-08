@@ -12,21 +12,8 @@
 #define Format2Tok(x) ((x)+349)
 
 #define FormatPDB        1
-#define FormatMacroMod   2
-#define FormatGaussian   3
-#define FormatAlchemy    4
 #define FormatNMRPDB     5
-#define FormatCharmm     6
-#define FormatBiosym     7
-#define FormatMOPAC      8
-#define FormatSHELX      9
-#define FormatMol2      10
-#define FormatFDAT      11
-#define FormatMMDB      12
-#define FormatMDL       13
-#define FormatXYZ       14
 #define FormatCIF       15
-#define FormatCEX       16
 
 #define IPC_Ok      0
 #define IPC_Error   1

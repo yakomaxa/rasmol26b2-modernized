@@ -34,8 +34,10 @@ list and supported-platform history are preserved verbatim in
   via `_LONGLONG` (`rasmol.h`), fixing pixel-packing corruption that
   plain `long` being 64 bits on modern LP64 systems silently caused.
 - **mmCIF / PDBx reader** (`LoadCIFMolecule`, in `infile.c`) — RasMol
-  2.6-beta-2 could only *write* CIF (`SaveCIFMolecule`), never read it.
-  This adds a small dependency-free tag/loop tokeniser for the subset
+  2.6-beta-2 shipped a `SaveCIFMolecule` stub that never actually wrote
+  anything (`if(!Database) return(False); return(True);` — no file
+  I/O at all) and had no reader either. This adds a small
+  dependency-free tag/loop tokeniser for the subset
   of the mmCIF grammar the PDB and AlphaFold DB actually emit, and
   structurally parses the `_atom_site` loop by column *name* rather
   than fixed column *position* (mmCIF is tag/loop based, not
@@ -80,6 +82,17 @@ list and supported-platform history are preserved verbatim in
   colours, selection, every representation, H-bond/SS-bond display) to
   a `.rsc` file that `rasmol -script <file>` replays to reproduce the
   same state. Worth knowing about since it's easy to miss.
+- **Minimized molecule/export format support**: this fork reads/writes
+  only PDB, NMRPDB and mmCIF, and exports only PPM (raster) and
+  PostScript (`write vectps`), plus the `write script` session dump
+  above. The original distribution's Alchemy, CHARMM, MOPAC, Mol2,
+  MDL, XYZ, Biosym, SHELX, FDAT and MacroModel readers/writers, and its
+  GIF, BMP, Sun Rasterfile, Apple PICT, SGI IRIS, raster-EPS, POV-Ray,
+  Kinemage and MolScript exporters, are removed — this fork's own
+  focus has only ever been PDB/CIF macromolecular structures, and
+  three of the removed loaders (Biosym, SHELX, FDAT) were already
+  non-functional stubs in 2.6-beta-2 that silently "succeeded" while
+  parsing nothing.
 - Full dated details of every change — both this modernization work
   and the original development history back to 1992 — are in
   [`ChangeLog`](ChangeLog).

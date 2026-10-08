@@ -21,6 +21,13 @@
 #include <stdio.h>
 #include <math.h>
 
+#ifdef _OPENMP
+#include <omp.h>
+#else
+#define omp_get_thread_num()   0
+#define omp_get_max_threads()  1
+#endif
+
 #define MOLECULE
 #include "molecule.h"
 #include "command.h"
@@ -876,6 +883,62 @@ static void CreateHydrogenBond( srcCA, dstCA, src, dst, energy, offset )
 }
 
 
+/* Per-thread equivalents of FreeHBond/CurHBond, used only while
+ * CalcHydrogenBonds() is searching chains in parallel below - each
+ * thread builds its own private sub-list via AppendThreadHBond()
+ * instead of touching the shared FreeHBond/CurHBond globals (which
+ * CreateHydrogenBond() above still uses exactly as before, for the
+ * ordinary single-threaded "bond ... hbond" command path). Set up and
+ * torn down once per CalcHydrogenBonds() call; NULL outside it.
+ */
+static HBond __far * __far *ThrHead;
+static HBond __far * __far * __far *ThrTail;
+static HBond __far * __far *ThrFree;
+
+static void AppendThreadHBond( tid, srcCA, dstCA, src, dst, energy, offset )
+    int tid;
+    Atom __far *srcCA, __far *dstCA;
+    Atom __far *src, __far *dst;
+    int energy, offset;
+{
+    register HBond __far *ptr;
+    register int i,flag;
+
+    if( !(ptr = ThrFree[tid]) )
+    {
+        #pragma omp atomic
+        MemSize += HBondPool*sizeof(HBond);
+	ptr = (HBond __far *)_fmalloc( HBondPool*sizeof(HBond) );
+	if( !ptr ) FatalDataError("Memory allocation failed");
+	for( i=1; i<HBondPool; i++ )
+	{   ptr->hnext = ThrFree[tid];
+	    ThrFree[tid] = ptr++;
+	}
+    } else ThrFree[tid] = ptr->hnext;
+
+    if( (offset>=-128) && (offset<127) )
+    {   ptr->offset = (Char)offset;
+    } else ptr->offset = 0;
+
+    flag = ZoneBoth? src->flag&dst->flag : src->flag|dst->flag;
+    ptr->flag = flag & SelectFlag;
+
+    ptr->src = src;
+    ptr->dst = dst;
+    ptr->srcCA = srcCA;
+    ptr->dstCA = dstCA;
+    ptr->energy = energy;
+    ptr->col = 0;
+
+    *ThrTail[tid] = ptr;
+    ptr->hnext = (void __far*)0;
+    ThrTail[tid] = &ptr->hnext;
+
+    #pragma omp atomic
+    InfoHBondCount++;
+}
+
+
 void CreateBond( src, dst, flag )
     int src, dst, flag;
 {
@@ -1284,10 +1347,10 @@ void FindDisulphideBridges()
 
 #ifdef FUNCPROTO
 static int CalculateBondEnergy( Group __far* );
-static void CalcProteinHBonds( Chain __far* );
-static void CalcNucleicHBonds( Chain __far* );
+static void CalcProteinHBonds( Chain __far*, int );
+static void CalcNucleicHBonds( Chain __far*, int );
 static int IsHBonded( Atom __far*, Atom __far*, HBond __far* );
-static void TestLadder( Chain __far* );
+static void TestLadder( Chain __far*, Chain __far * __far*, int );
 #endif
 
 
@@ -1298,7 +1361,16 @@ static void TestLadder( Chain __far* );
 #define MinHDist ((Long)125*125)
 
 
-/* Protein Donor Atom Coordinates */
+/* Protein Donor Atom Coordinates - scratch state for the current
+ * donor atom being searched, shared between CalcProteinHBonds()/
+ * CalcNucleicHBonds() and CalculateBondEnergy(). threadprivate so
+ * CalcHydrogenBonds() can run one donor search per chain concurrently
+ * without one thread's in-progress donor clobbering another's - each
+ * thread gets its own copy, and every one of these is fully
+ * (re)written before being read on every donor, both before and
+ * after this change, so an unspecified initial value per thread is
+ * harmless.
+ */
 static int hxorg,hyorg,hzorg;
 static int nxorg,nyorg,nzorg;
 static Atom __far *best1CA;
@@ -1308,6 +1380,8 @@ static Atom __far *best2;
 static Atom __far *optr;
 static int res1,res2;
 static int off1,off2;
+#pragma omp threadprivate(hxorg,hyorg,hzorg,nxorg,nyorg,nzorg, \
+                           best1CA,best2CA,best1,best2,optr,res1,res2,off1,off2)
 
 
 static int CalculateBondEnergy( group )
@@ -1453,8 +1527,9 @@ static void HGridClear()
 }
 
 
-static void CalcProteinHBonds( chn1 )
+static void CalcProteinHBonds( chn1, tid )
     Chain __far *chn1;
+    int tid;
 {
     register int energy, offset;
     register Group __far *group1;
@@ -1592,15 +1667,16 @@ static void CalcProteinHBonds( chn1 )
 
 	if( res1 )
 	{   if( res2 )
-		CreateHydrogenBond(ca1,best2CA,n1,best2,res2,off2);
-	    CreateHydrogenBond(ca1,best1CA,n1,best1,res1,off1);
+		AppendThreadHBond(tid,ca1,best2CA,n1,best2,res2,off2);
+	    AppendThreadHBond(tid,ca1,best1CA,n1,best1,res1,off1);
 	}
     }
 }
 
 
-static void CalcNucleicHBonds( chn1 )
+static void CalcNucleicHBonds( chn1, tid )
     Chain __far *chn1;
+    int tid;
 {
     register Chain __far *chn2;
     register Group __far *group1;
@@ -1677,23 +1753,23 @@ static void CalcNucleicHBonds( chn1 )
 	    ca1 = FindGroupAtom( group1, 7 );
 	    ca2 = FindGroupAtom( best, 7 );
 
-	    CreateHydrogenBond( ca1, ca2, n1, best1, 0, 0 );
+	    AppendThreadHBond( tid, ca1, ca2, n1, best1, 0, 0 );
 	    if( IsGuanine(group1->refno) )
 	    {   /* Guanine-Cytosine */
 		if( (ca1=FindGroupAtom(group1,22)) &&  /* G.N2 */
 		    (ca2=FindGroupAtom(best,26)) )     /* C.O2 */
-		    CreateHydrogenBond( (void __far*)0, (void __far*)0,
+		    AppendThreadHBond( tid, (void __far*)0, (void __far*)0,
 					ca1, ca2, 0, 0 );
 
 		if( (ca1=FindGroupAtom(group1,28)) &&  /* G.O6 */
 		    (ca2=FindGroupAtom(best,24)) )     /* C.N4 */
-		    CreateHydrogenBond( (void __far*)0, (void __far*)0,
+		    AppendThreadHBond( tid, (void __far*)0, (void __far*)0,
 					ca1, ca2, 0, 0 );
 
 	    } else /* Adenine-Thymine */
 		if( (ca1=FindGroupAtom(group1,25)) &&  /* A.N6 */
 		    (ca2=FindGroupAtom(best,27)) )     /* T.O4 */
-		    CreateHydrogenBond( (void __far*)0, (void __far*)0,
+		    AppendThreadHBond( tid, (void __far*)0, (void __far*)0,
 					ca1, ca2, 0, 0 );
 	}
     }
@@ -1723,6 +1799,9 @@ void CalcHydrogenBonds( full )
     register int scoped;
     register int pos1;
     char buffer[40];
+
+    Chain __far **chainarr;
+    int nchains, nthreads, i, tid;
 
     if( !Database ) return;
 
@@ -1764,13 +1843,65 @@ void CalcHydrogenBonds( full )
             }
         }
 
+    /* Donor search is independent per chain (the grid above is built
+     * and read-only by this point, and each chain's search only ever
+     * writes to its own atoms' threadprivate-scratch-derived HBonds -
+     * see AppendThreadHBond()), so this is run across threads, one
+     * chain per task. Collected into a plain array first since OMP's
+     * worksharing loop needs random-access indexing, not a linked-
+     * list walk.
+     */
+    nchains = 0;
     for(chn1=Database->clist; chn1; chn1=chn1->cnext)
         if( chn1->glist && (!scoped || ChainHasSelection(chn1)) )
-        {   if( IsProtein(chn1->glist->refno) )
-	    {   CalcProteinHBonds(chn1);
-	    } else if( IsDNA(chn1->glist->refno) )
-                CalcNucleicHBonds(chn1);
+            nchains++;
+
+    chainarr = (Chain __far **)malloc(nchains*sizeof(Chain __far*));
+    i = 0;
+    for(chn1=Database->clist; chn1; chn1=chn1->cnext)
+        if( chn1->glist && (!scoped || ChainHasSelection(chn1)) )
+            chainarr[i++] = chn1;
+
+    nthreads = omp_get_max_threads();
+    ThrHead = (HBond __far * __far *)malloc(nthreads*sizeof(HBond __far*));
+    ThrTail = (HBond __far * __far * __far *)
+              malloc(nthreads*sizeof(HBond __far * __far*));
+    ThrFree = (HBond __far * __far *)malloc(nthreads*sizeof(HBond __far*));
+    for( i=0; i<nthreads; i++ )
+    {   ThrHead[i] = (void __far*)0;
+        ThrTail[i] = &ThrHead[i];
+        ThrFree[i] = (void __far*)0;
+    }
+
+    #pragma omp parallel for schedule(static) private(tid)
+    for( i=0; i<nchains; i++ )
+    {   tid = omp_get_thread_num();
+        if( IsProtein(chainarr[i]->glist->refno) )
+        {   CalcProteinHBonds(chainarr[i],tid);
+        } else if( IsDNA(chainarr[i]->glist->refno) )
+            CalcNucleicHBonds(chainarr[i],tid);
+    }
+
+    /* Merge every thread's private sub-list into the real list, in
+     * thread order - since OMP's static schedule hands out strictly
+     * increasing, contiguous chunks of chainarr to each thread, this
+     * reproduces exactly the same chain-order concatenation the
+     * original single-threaded loop above would have produced, which
+     * FindAlphaHelix()/FindBetaSheets() depend on below.
+     */
+    for( i=0; i<nthreads; i++ )
+        if( ThrHead[i] )
+        {   *CurHBond = ThrHead[i];
+            CurHBond = ThrTail[i];
         }
+    for( i=0; i<nthreads; i++ )
+        if( ThrFree[i] )
+            ReclaimHBonds( ThrFree[i] );
+
+    free( chainarr );
+    free( ThrHead );  ThrHead = 0;
+    free( ThrTail );  ThrTail = 0;
+    free( ThrFree );  ThrFree = 0;
 
     HGridClear();
 
@@ -1882,13 +2013,39 @@ static int ChainNearPoint( chain, pt )
 }
 
 
-static void TestLadder( chain )
+/* Conservative bbox-vs-bbox test: True unless no point of cand's
+ * bounding box can possibly be within HGridCellSize of any point in
+ * outer's bounding box. Used to build a short candidate list once per
+ * outer chain (see FindBetaSheets) instead of letting TestLadder()
+ * walk/ChainNearPoint-test every other chain in the database on every
+ * single residue - every point TestLadder ever tests against a
+ * candidate (ccurri/cnexti) lies inside outer's own bbox by
+ * construction, so this is a safe superset of what ChainNearPoint()
+ * would accept for any such point, never a narrower one.
+ */
+static int ChainsOverlap( outer, cand )
+    Chain __far *outer, __far *cand;
+{
+    if( (cand->bbMaxX < outer->bbMinX-HGridCellSize) ||
+        (cand->bbMinX > outer->bbMaxX+HGridCellSize) ) return( False );
+    if( (cand->bbMaxY < outer->bbMinY-HGridCellSize) ||
+        (cand->bbMinY > outer->bbMaxY+HGridCellSize) ) return( False );
+    if( (cand->bbMaxZ < outer->bbMinZ-HGridCellSize) ||
+        (cand->bbMinZ > outer->bbMaxZ+HGridCellSize) ) return( False );
+    return( True );
+}
+
+
+static void TestLadder( chain, nearbuf, nearcount )
     Chain __far *chain;
+    Chain __far * __far *nearbuf;
+    int nearcount;
 {
     register Atom __far *cprevj, __far *ccurrj, __far *cnextj;
     register HBond __far *hcurrj, __far *hnextj;
     register Group __far *currj, __far *nextj;
     register int count, result, found;
+    register int nearidx;
 
     /* Already part of atleast one ladder */
     found = curri->flag & SheetFlag;
@@ -1898,6 +2055,7 @@ static void TestLadder( chain )
     while( hnextj && hnextj->srcCA==cnexti )
 	hnextj = hnextj->hnext;
 
+    nearidx = 0;
     while( True )
     {   if( nextj )
 	    if( IsProtein(chain->glist->refno) )
@@ -1939,15 +2097,19 @@ static void TestLadder( chain )
 		    hnextj = hnextj->hnext;
 
 	for(;;)
-	{   if( !(chain = chain->cnext) )
+	{   if( nearidx >= nearcount )
 		return;
+	    chain = nearbuf[nearidx++];
 	    if( ChainNearPoint(chain,ccurri) || ChainNearPoint(chain,cnexti) )
 	    {   nextj = chain->glist;
 		break;
 	    }
 	    /* else: chain is nowhere near curri/nexti - no possible
 	     * ladder partner there, so skip it without even entering
-	     * its residue list.
+	     * its residue list. nearbuf was already pre-filtered against
+	     * the whole outer chain's bbox (see FindBetaSheets), so this
+	     * per-point recheck is cheap - almost everything that fails
+	     * it here was excluded from nearbuf in the first place.
 	     */
 	}
     }
@@ -1957,10 +2119,19 @@ static void TestLadder( chain )
 static void FindBetaSheets()
 {
     register Chain __far *chain;
+    register Chain __far *scan;
     register Group __far *group;
     register Atom __far *ca;
     register int ladder;
     register int count;
+    Chain __far **nearbuf;
+    int nearcount;
+
+    /* Scratch buffer for TestLadder()'s candidate-chain list, rebuilt
+     * fresh for each outer chain below - sized once to the total
+     * chain count so it's never too small, freed on return.
+     */
+    nearbuf = (Chain __far **)malloc(InfoChainCount*sizeof(Chain __far*));
 
     /* Precompute each protein chain's alpha-carbon bounding box, so
      * TestLadder() can cheaply skip chains that can't possibly hold a
@@ -1993,13 +2164,27 @@ static void FindBetaSheets()
     for( chain=Database->clist; chain; chain=chain->cnext )
 	if( (nexti = chain->glist) )
 	    if( IsProtein(nexti->refno) )
-	    {   count = 1;
+	    {   /* Candidate chains for a ladder partner starting from
+		 * *any* residue of this chain are a subset of the chains
+		 * that overlap this chain's own bbox (every ccurri/
+		 * cnexti TestLadder ever tests here lies inside it) - so
+		 * this list, built once per outer chain rather than once
+		 * per residue, is exactly the same safe superset
+		 * ChainNearPoint() would eventually accept, just far
+		 * cheaper to reach.
+		 */
+		nearcount = 0;
+		for( scan=chain->cnext; scan; scan=scan->cnext )
+		    if( ChainsOverlap(chain,scan) )
+			nearbuf[nearcount++] = scan;
+
+		count = 1;
 		ladder = False;
 		do {
 		    cnexti = FindGroupAtom(nexti,1);
 
 		    if( count == 3 )
-		    {   TestLadder( chain );
+		    {   TestLadder( chain, nearbuf, nearcount );
 			if( curri->struc & SheetFlag )
 			{   if( !ladder )
 			    {   InfoLadderCount++;
@@ -2008,7 +2193,7 @@ static void FindBetaSheets()
 			} else ladder = False;
 		    } else count++;
 
-		    cprevi = ccurri; ccurri = cnexti; 
+		    cprevi = ccurri; ccurri = cnexti;
 		    curri = nexti;   hcurri = hnexti;
 		    while( hnexti && hnexti->srcCA==cnexti )
 			hnexti = hnexti->hnext;
@@ -2017,6 +2202,8 @@ static void FindBetaSheets()
 	    } else if( IsNucleo(nexti->refno) )
 		while( hnexti && !IsAminoBackbone(hnexti->src->refno) )
 		    hnexti = hnexti->hnext;
+
+    free(nearbuf);
 }
 
 
